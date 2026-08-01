@@ -1,0 +1,6 @@
+{
+  "name": "Namma Ooru Kulfi",
+  "description": "Mobile dashboard for Namma Ooru Kulfi business tracking sales, inventory, and monthly financials.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
