@@ -131,18 +131,6 @@ export default function Dashboard() {
     };
   }, [entries, expenses]);
 
-  if (loading) {
-    return (
-      <div className={`p-6 text-center font-bold uppercase tracking-wider ${
-        isDark ? 'text-slate-400' : 'text-slate-500'
-      }`}>
-        Loading dashboard...
-      </div>
-    );
-  }
-
-  const latest = stats.latest;
-
   const nextDaySuggestion = useMemo(() => {
     if (!entries || entries.length === 0) {
       return { stick: 40, pot: 25, avgStick: 35, avgPot: 20, hasData: false };
@@ -168,6 +156,18 @@ export default function Dashboard() {
       hasData: true
     };
   }, [entries]);
+
+  if (loading) {
+    return (
+      <div className={`p-6 text-center font-bold uppercase tracking-wider ${
+        isDark ? 'text-slate-400' : 'text-slate-500'
+      }`}>
+        Loading dashboard...
+      </div>
+    );
+  }
+
+  const latest = stats.latest;
 
   const cardBg = isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-250 shadow-md shadow-slate-200/40';
   const labelColor = isDark ? 'text-slate-400' : 'text-slate-700 font-extrabold';
