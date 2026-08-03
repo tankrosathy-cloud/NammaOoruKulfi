@@ -85,11 +85,13 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
   const availablePot = Math.max(0, (inventory.potQuantity || 0) - totalPotSold);
 
   // Calculate sold values
-  const stickBalanceVal = formData.stickBalance === '' ? (parseInt(formData.stickLoaded) || 0) + prevBalances.stick : parseInt(formData.stickBalance);
-  const stickSold = Math.max(0, (parseInt(formData.stickLoaded) || 0) + prevBalances.stick - stickBalanceVal);
+  const stickLoadedVal = parseInt(formData.stickLoaded) || 0;
+  const stickBalanceVal = formData.stickBalance === '' ? stickLoadedVal : (parseInt(formData.stickBalance) || 0);
+  const stickSold = Math.max(0, stickLoadedVal - stickBalanceVal);
 
-  const potBalanceVal = formData.potBalance === '' ? (parseInt(formData.potLoaded) || 0) + prevBalances.pot : parseInt(formData.potBalance);
-  const potSold = Math.max(0, (parseInt(formData.potLoaded) || 0) + prevBalances.pot - potBalanceVal);
+  const potLoadedVal = parseInt(formData.potLoaded) || 0;
+  const potBalanceVal = formData.potBalance === '' ? potLoadedVal : (parseInt(formData.potBalance) || 0);
+  const potSold = Math.max(0, potLoadedVal - potBalanceVal);
 
   // Auto calculate finances
   const discount = parseInt(formData.discount) || 0;
