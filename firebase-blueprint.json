@@ -1,0 +1,48 @@
+{
+  "collections": [
+    {
+      "name": "entries",
+      "description": "Daily sales entries for the Kulfi business.",
+      "fields": [
+        { "name": "userId", "type": "string" },
+        { "name": "date", "type": "string" },
+        { "name": "stickLoaded", "type": "number" },
+        { "name": "stickBalance", "type": "number" },
+        { "name": "stickSold", "type": "number" },
+        { "name": "plateLoaded", "type": "number" },
+        { "name": "plateBalance", "type": "number" },
+        { "name": "plateSold", "type": "number" },
+        { "name": "potLoaded", "type": "number" },
+        { "name": "potBalance", "type": "number" },
+        { "name": "potSold", "type": "number" },
+        { "name": "cashBagLoaded", "type": "number" },
+        { "name": "cashBagTotal", "type": "number" },
+        { "name": "phonePe", "type": "number" },
+        { "name": "discount", "type": "number" },
+        { "name": "requiredAmount", "type": "number" },
+        { "name": "actualAmount", "type": "number" },
+        { "name": "shortage", "type": "number" },
+        { "name": "bonus", "type": "number" },
+        { "name": "finalAmount", "type": "number" },
+        { "name": "expenses", "type": "number" },
+        { "name": "notes", "type": "string" }
+      ],
+      "rules": [
+        "allow read, write, delete: if request.auth != null && request.auth.uid == resource.data.userId;",
+        "allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;"
+      ]
+    },
+    {
+      "name": "settings",
+      "description": "Global settings for the Kulfi business (per user).",
+      "fields": [
+        { "name": "stickPrice", "type": "number" },
+        { "name": "platePrice", "type": "number" },
+        { "name": "potPrice", "type": "number" }
+      ],
+      "rules": [
+        "allow read, write: if request.auth != null && request.auth.uid == request.resource.id;"
+      ]
+    }
+  ]
+}
