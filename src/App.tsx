@@ -10,7 +10,6 @@ import { auth } from './lib/firebase';
 import { signInWithEmailAndPassword, sendPasswordResetEmail, User } from 'firebase/auth';
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
-import { deleteJulyData } from './lib/importJulyData';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -25,12 +24,6 @@ export default function App() {
     });
     return unsubscribe;
   }, []);
-
-  useEffect(() => {
-    if (user) {
-      deleteJulyData();
-    }
-  }, [user]);
 
   if (loading) {
     return (

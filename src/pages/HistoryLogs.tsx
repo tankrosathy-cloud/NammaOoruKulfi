@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { useLogs, clearLogs } from '../store';
+import { useLogs, clearLogs, revokeDeletedRecord } from '../store';
 import { format, parseISO } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
-import { History, User, Activity, Trash2 } from 'lucide-react';
+import { History, User, Activity, Trash2, Undo2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { AppLog } from '../types';
 
 export default function HistoryLogs() {
   const { logs, loading } = useLogs();
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const handleClear = async () => {
     setClearing(true);
@@ -19,6 +21,21 @@ export default function HistoryLogs() {
       console.error("Failed to clear logs:", error);
     } finally {
       setClearing(false);
+    }
+  };
+
+  const handleRevoke = async (log: AppLog) => {
+    if (!confirm('Are you sure you want to revoke this deletion and restore the record?')) {
+      return;
+    }
+    setRevokingId(log.id);
+    try {
+      await revokeDeletedRecord(log);
+    } catch (error) {
+      console.error("Failed to revoke deletion:", error);
+      alert("Failed to restore record: " + (error as Error).message);
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -80,9 +97,23 @@ export default function HistoryLogs() {
                   {log.details}
                 </p>
 
-                <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/50 text-slate-750 dark:text-slate-400">
-                  <User className="w-3 h-3" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">{log.userEmail}</span>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-200 dark:border-slate-800/50">
+                  <div className="flex items-center gap-1.5 text-slate-750 dark:text-slate-400">
+                    <User className="w-3 h-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{log.userEmail}</span>
+                  </div>
+                  {log.deletedPayload && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={revokingId === log.id}
+                      onClick={() => handleRevoke(log)}
+                      className="h-7 px-2.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 border-emerald-500/20 text-emerald-600 hover:bg-emerald-500 hover:text-white dark:bg-emerald-500/5 dark:border-emerald-500/15 dark:text-emerald-400 dark:hover:bg-emerald-500 dark:hover:text-white flex items-center gap-1.5 rounded-lg transition-all cursor-pointer"
+                    >
+                      <Undo2 className="w-3 h-3" />
+                      {revokingId === log.id ? 'Restoring...' : 'Revoke Deletion'}
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

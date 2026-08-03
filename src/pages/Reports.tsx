@@ -236,18 +236,26 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                         </div>
                       </div>
                     </div>
-                    {deleteConfirmId === entry.id ? (
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
-                        <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDelete(entry.id)}>Delete</Button>
-                      </div>
+                    {isOwner ? (
+                      deleteConfirmId === entry.id ? (
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+                          <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDelete(entry.id)}>Delete</Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => onEdit(entry.date)}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setDeleteConfirmId(entry.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )
                     ) : (
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => onEdit(entry.date)}>
                           <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setDeleteConfirmId(entry.id)}>
-                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     )}

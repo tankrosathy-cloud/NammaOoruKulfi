@@ -57,4 +57,5 @@ export interface AppLog {
   userEmail: string;
   action: string;
   details: string;
+  deletedPayload?: string; // Serialized JSON of the deleted item
 }

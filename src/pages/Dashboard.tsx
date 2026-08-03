@@ -6,6 +6,30 @@ import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activ
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
+import { motion } from 'motion/react';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  show: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      duration: 0.4,
+      ease: [0.215, 0.610, 0.355, 1.000] // elegant cubic-bezier easeOut
+    } 
+  }
+};
+
 
 export default function Dashboard() {
   const { entries, loading: entriesLoading } = useEntries();
@@ -174,47 +198,60 @@ export default function Dashboard() {
   const valueColor = isDark ? 'text-white' : 'text-slate-950 font-black';
 
   return (
-    <div className="p-6 space-y-8 pb-32">
-      <div>
+    <motion.div 
+      variants={containerVariants} 
+      initial="hidden" 
+      animate="show" 
+      className="p-6 space-y-8 pb-32"
+    >
+      <motion.div variants={itemVariants}>
         <h2 className={`text-3xl font-black tracking-tighter uppercase mb-1 ${
           isDark ? 'text-white' : 'text-slate-900'
         }`}>Overview</h2>
         <p className={`${labelColor} text-[10px] font-bold uppercase tracking-widest`}>Monthly performance & current inventory</p>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Card className={cardBg}>
-          <CardContent className="p-4 flex flex-col justify-center">
-            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-600 dark:text-cyan-400`}>Today</p>
-            <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{formatCurrency(stats.todayRevenue)}</div>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-600 dark:text-cyan-400`}>Today</p>
+              <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{formatCurrency(stats.todayRevenue)}</div>
+            </CardContent>
+          </Card>
+        </motion.div>
         
-        <Card className={cardBg}>
-          <CardContent className="p-4 flex flex-col justify-center">
-            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 text-pink-600 dark:text-pink-400`}>This Week</p>
-            <div className="text-2xl font-black text-pink-600 dark:text-pink-400">{formatCurrency(stats.weekRevenue)}</div>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 text-pink-600 dark:text-pink-400`}>This Week</p>
+              <div className="text-2xl font-black text-pink-600 dark:text-pink-400">{formatCurrency(stats.weekRevenue)}</div>
+            </CardContent>
+          </Card>
+        </motion.div>
 
-        <Card className={cardBg}>
-          <CardContent className="p-4 flex flex-col justify-center">
-            <p className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> Month
-            </p>
-            <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(stats.monthlyRevenue)}</div>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" /> Month
+              </p>
+              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{formatCurrency(stats.monthlyRevenue)}</div>
+            </CardContent>
+          </Card>
+        </motion.div>
         
-        <Card className={cardBg}>
-          <CardContent className="p-4 flex flex-col justify-center">
-            <p className="text-[10px] font-extrabold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest mb-1">Lifetime</p>
-            <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{formatCurrency(stats.lifetimeRevenue)}</div>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-extrabold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest mb-1">Lifetime</p>
+              <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{formatCurrency(stats.lifetimeRevenue)}</div>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 gap-4">
         <Card className={cardBg}>
           <CardHeader className="p-5 pb-2">
             <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
@@ -226,9 +263,9 @@ export default function Dashboard() {
             <p className="text-[10px] font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider mt-2">This month</p>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 gap-4">
         <Card className={cardBg}>
           <CardHeader className="p-5 pb-2">
             <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex justify-between items-center ${labelColor}`}>
@@ -253,10 +290,10 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
       {/* Current Month Analytics (Trends & Distribution) */}
-      <div className="space-y-6">
+      <motion.div variants={itemVariants} className="space-y-6">
         <div>
           <h3 className={`text-xs font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-700'} mb-3`}>
             {format(new Date(), 'MMMM yyyy')} Analytics
@@ -423,151 +460,159 @@ export default function Dashboard() {
 
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {stats.chartData.length > 0 && (
-        <Card className={cardBg}>
-          <CardHeader className="p-5 pb-2">
-            <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
-              <BarChart3 className="w-4 h-4 text-cyan-500" /> Last 7 Days Sales
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-5 pt-4">
-            <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.chartData}>
-                  <XAxis 
-                    dataKey="date" 
-                    stroke={isDark ? "#475569" : "#94A3B8"} 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false} 
-                  />
-                  <YAxis 
-                    stroke={isDark ? "#475569" : "#94A3B8"} 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tickFormatter={(value) => `₹${value}`} 
-                  />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: isDark ? '#0f172a' : '#ffffff', 
-                      border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', 
-                      borderRadius: '12px',
-                      color: isDark ? '#ffffff' : '#0f172a'
-                    }}
-                    itemStyle={{ color: '#06b6d4', fontWeight: 'bold' }}
-                    labelStyle={{ color: isDark ? '#94a3b8' : '#475569', fontSize: '11px', fontWeight: 'bold' }}
-                    formatter={(value: number) => [formatCurrency(value), 'Sales']}
-                  />
-                  <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
-                    {stats.chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === stats.chartData.length - 1 ? '#06b6d4' : (isDark ? '#334155' : '#cbd5e1')} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardHeader className="p-5 pb-2">
+              <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
+                <BarChart3 className="w-4 h-4 text-cyan-500" /> Last 7 Days Sales
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 pt-4">
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.chartData}>
+                    <XAxis 
+                      dataKey="date" 
+                      stroke={isDark ? "#475569" : "#94A3B8"} 
+                      fontSize={10} 
+                      tickLine={false} 
+                      axisLine={false} 
+                    />
+                    <YAxis 
+                      stroke={isDark ? "#475569" : "#94A3B8"} 
+                      fontSize={10} 
+                      tickLine={false} 
+                      axisLine={false} 
+                      tickFormatter={(value) => `₹${value}`} 
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: isDark ? '#0f172a' : '#ffffff', 
+                        border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', 
+                        borderRadius: '12px',
+                        color: isDark ? '#ffffff' : '#0f172a'
+                      }}
+                      itemStyle={{ color: '#06b6d4', fontWeight: 'bold' }}
+                      labelStyle={{ color: isDark ? '#94a3b8' : '#475569', fontSize: '11px', fontWeight: 'bold' }}
+                      formatter={(value: number) => [formatCurrency(value), 'Sales']}
+                    />
+                    <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
+                      {stats.chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index === stats.chartData.length - 1 ? '#06b6d4' : (isDark ? '#334155' : '#cbd5e1')} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
 
       {nextDaySuggestion.hasData && (
-        <Card className={`overflow-hidden border ${
-          isDark 
-            ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800' 
-            : 'bg-white text-slate-800 border-slate-200/80 shadow-md shadow-slate-100'
-        }`}>
-          <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
-            <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
-              <Sparkles className="w-4.5 h-4.5 text-pink-500 animate-pulse" /> Next Day Estimated Load Suggestion
-            </CardTitle>
-            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${
-              isDark ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800' : 'bg-cyan-50 text-cyan-700 border border-cyan-100'
-            }`}>
-              Predictive Insights
-            </span>
-          </CardHeader>
-          <CardContent className="p-5 space-y-4">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Based on recent average sales from the last 5 operational days, we recommend preparing and loading the following quantities for the next shift to minimize stockout risk:
-            </p>
+        <motion.div variants={itemVariants}>
+          <Card className={`overflow-hidden border ${
+            isDark 
+              ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800' 
+              : 'bg-white text-slate-800 border-slate-200/80 shadow-md shadow-slate-100'
+          }`}>
+            <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
+              <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
+                <Sparkles className="w-4.5 h-4.5 text-pink-500 animate-pulse" /> Next Day Estimated Load Suggestion
+              </CardTitle>
+              <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${
+                isDark ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800' : 'bg-cyan-50 text-cyan-700 border border-cyan-100'
+              }`}>
+                Predictive Insights
+              </span>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Based on recent average sales from the last 5 operational days, we recommend preparing and loading the following quantities for the next shift to minimize stockout risk:
+              </p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
-                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Stick Kulfi Suggestion</span>
-                <span className="text-3xl font-black text-cyan-500 leading-none mt-1">{nextDaySuggestion.stick} <span className="text-xs font-bold text-slate-400">pcs</span></span>
-                <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgStick} pcs</span>
+              <div className="grid grid-cols-2 gap-4">
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                  <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Stick Kulfi Suggestion</span>
+                  <span className="text-3xl font-black text-cyan-500 leading-none mt-1">{nextDaySuggestion.stick} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgStick} pcs</span>
+                </div>
+
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                  <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Pot Kulfi Suggestion</span>
+                  <span className="text-3xl font-black text-pink-500 leading-none mt-1">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPot} pcs</span>
+                </div>
               </div>
 
-              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
-                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Pot Kulfi Suggestion</span>
-                <span className="text-3xl font-black text-pink-500 leading-none mt-1">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
-                <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPot} pcs</span>
+              <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 flex gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase">
+                <span className="font-black">💡 Recommendation Note:</span>
+                <span>A 15% safety stock buffer is auto-included and rounded up to the nearest multiple of 5.</span>
               </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 flex gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase">
-              <span className="font-black">💡 Recommendation Note:</span>
-              <span>A 15% safety stock buffer is auto-included and rounded up to the nearest multiple of 5.</span>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
 
       {latest ? (
-        <Card className={`border transition-all duration-300 ${
-          isDark 
-            ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800 shadow-[0_8px_30px_rgba(0,0,0,0.5)]' 
-            : 'bg-white text-slate-800 border-slate-100 shadow-lg shadow-slate-100'
-        }`}>
-          <CardHeader className={`p-6 border-b rounded-t-3xl ${
-            isDark ? 'border-slate-800/60' : 'border-slate-100'
+        <motion.div variants={itemVariants}>
+          <Card className={`border transition-all duration-300 ${
+            isDark 
+              ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800 shadow-[0_8px_30px_rgba(0,0,0,0.5)]' 
+              : 'bg-white text-slate-800 border-slate-100 shadow-lg shadow-slate-100'
           }`}>
-            <div className="flex justify-between items-center">
-              <CardTitle className={`text-xl font-black tracking-tighter uppercase flex items-center gap-2 ${
-                isDark ? 'text-white' : 'text-slate-900'
-              }`}>
-                <Package className="w-5 h-5 text-cyan-500" /> Latest Inventory
-              </CardTitle>
-              <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider ${
-                isDark 
-                  ? 'text-cyan-100 bg-cyan-900/30 border border-cyan-800' 
-                  : 'text-cyan-700 bg-cyan-50 border border-cyan-100'
-              }`}>
-                {format(parseISO(latest.date), 'MMM dd, yyyy')}
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className={`divide-y ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
-              <InventoryRow label="Stick Kulfi" loaded={latest.stickLoaded} balance={latest.stickBalance} sold={latest.stickSold} color="cyan" isDark={isDark} />
-              <InventoryRow label="Pot Kulfi" loaded={latest.potLoaded} balance={latest.potBalance} sold={latest.potSold} color="pink" isDark={isDark} />
-            </div>
-            
-            <div className={`p-6 rounded-b-3xl border-t grid grid-cols-2 gap-4 ${
-              isDark ? 'bg-slate-950/50 border-slate-800/60' : 'bg-slate-50 border-slate-100'
+            <CardHeader className={`p-6 border-b rounded-t-3xl ${
+              isDark ? 'border-slate-800/60' : 'border-slate-100'
             }`}>
-               <div>
-                 <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${labelColor}`}>Net Sales</p>
-                 <p className="font-black text-lg text-cyan-500">{formatCurrency(latest.actualAmount - (latest.cashBagLoaded || 0) + (latest.expenses || 0) + (latest.additionalExpenses || 0) + (latest.bonus || 0))}</p>
-               </div>
-               <div>
-                 <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${labelColor}`}>PhonePe Amount</p>
-                 <p className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(latest.phonePe)}</p>
-               </div>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex justify-between items-center">
+                <CardTitle className={`text-xl font-black tracking-tighter uppercase flex items-center gap-2 ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  <Package className="w-5 h-5 text-cyan-500" /> Latest Inventory
+                </CardTitle>
+                <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider ${
+                  isDark 
+                    ? 'text-cyan-100 bg-cyan-900/30 border border-cyan-800' 
+                    : 'text-cyan-700 bg-cyan-50 border border-cyan-100'
+                }`}>
+                  {format(parseISO(latest.date), 'MMM dd, yyyy')}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className={`divide-y ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
+                <InventoryRow label="Stick Kulfi" loaded={latest.stickLoaded} balance={latest.stickBalance} sold={latest.stickSold} color="cyan" isDark={isDark} />
+                <InventoryRow label="Pot Kulfi" loaded={latest.potLoaded} balance={latest.potBalance} sold={latest.potSold} color="pink" isDark={isDark} />
+              </div>
+              
+              <div className={`p-6 rounded-b-3xl border-t grid grid-cols-2 gap-4 ${
+                isDark ? 'bg-slate-950/50 border-slate-800/60' : 'bg-slate-50 border-slate-100'
+              }`}>
+                 <div>
+                   <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${labelColor}`}>Net Sales</p>
+                   <p className="font-black text-lg text-cyan-500">{formatCurrency(latest.actualAmount - (latest.cashBagLoaded || 0) + (latest.expenses || 0) + (latest.additionalExpenses || 0) + (latest.bonus || 0))}</p>
+                 </div>
+                 <div>
+                   <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${labelColor}`}>PhonePe Amount</p>
+                   <p className={`font-black text-lg ${isDark ? 'text-white' : 'text-slate-900'}`}>{formatCurrency(latest.phonePe)}</p>
+                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       ) : (
-        <Card className={cardBg}>
-          <CardContent className="p-8 text-center text-sm font-bold uppercase tracking-wider text-slate-500">
-            No entries found. Add an entry to see inventory stats.
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants}>
+          <Card className={cardBg}>
+            <CardContent className="p-8 text-center text-sm font-bold uppercase tracking-wider text-slate-500">
+              No entries found. Add an entry to see inventory stats.
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
-    </div>
+    </motion.div>
   );
 }
 

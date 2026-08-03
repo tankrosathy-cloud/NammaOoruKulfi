@@ -56,10 +56,25 @@ export async function deleteEntry(id: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  const username = (user.email || '').split('@')[0].toLowerCase();
+  const isOwner = ['nadeem', 'yuvaraj'].includes(username);
+  if (!isOwner) {
+    throw new Error("Staff members do not have permission to delete entries.");
+  }
+  
   triggerWriteStart();
   try {
-    await deleteDoc(doc(db, 'entries', id));
-    await addLog('DELETE_ENTRY', `Deleted entry with ID ${id}`);
+    const docRef = doc(db, 'entries', id);
+    const snap = await getDoc(docRef);
+    let payload: any = null;
+    let entryDate = id;
+    if (snap.exists()) {
+      payload = snap.data();
+      entryDate = payload.date || id;
+    }
+
+    await deleteDoc(docRef);
+    await addLog('DELETE_ENTRY', `Deleted entry for ${entryDate}`, payload);
   } catch (error) {
     console.error("Error deleting entry:", error);
     throw error;
@@ -185,10 +200,25 @@ export async function deleteExpense(id: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  const username = (user.email || '').split('@')[0].toLowerCase();
+  const isOwner = ['nadeem', 'yuvaraj'].includes(username);
+  if (!isOwner) {
+    throw new Error("Staff members do not have permission to delete expenses.");
+  }
+  
   triggerWriteStart();
   try {
-    await deleteDoc(doc(db, 'expenses', id));
-    await addLog('DELETE_EXPENSE', `Deleted expense with ID ${id}`);
+    const docRef = doc(db, 'expenses', id);
+    const snap = await getDoc(docRef);
+    let payload: any = null;
+    let expenseDetails = id;
+    if (snap.exists()) {
+      payload = snap.data();
+      expenseDetails = `₹${payload.amount} by ${payload.paidBy} on ${payload.date}`;
+    }
+
+    await deleteDoc(docRef);
+    await addLog('DELETE_EXPENSE', `Deleted expense: ${expenseDetails}`, payload);
   } catch (error) {
     console.error("Error deleting expense:", error);
     throw error;
@@ -228,36 +258,67 @@ export function useSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
-  const loadSettings = async () => {
-    setLoading(true);
-    const data = await getSettings();
-    setSettings(data);
-    setLoading(false);
-  };
-
   useEffect(() => {
-    loadSettings();
+    const user = auth.currentUser;
+    if (!user) {
+      setSettings(DEFAULT_SETTINGS);
+      setLoading(false);
+      return;
+    }
+
+    const docRef = doc(db, 'settings', 'global');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as Settings;
+        setSettings({
+          ...data,
+          stickPrice: 40,
+          potPrice: 50,
+        });
+      } else {
+        setSettings(DEFAULT_SETTINGS);
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching settings in realtime:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  return { settings, loading, reload: loadSettings };
+  return { settings, loading, reload: () => {} };
 }
 
 export function useInventory() {
   const [inventory, setInventory] = useState<InventoryStock>({ id: 'global', stickQuantity: 0, potQuantity: 0 });
   const [loading, setLoading] = useState(true);
 
-  const loadInventory = async () => {
-    setLoading(true);
-    const data = await getInventoryStock();
-    setInventory(data);
-    setLoading(false);
-  };
-
   useEffect(() => {
-    loadInventory();
+    const user = auth.currentUser;
+    if (!user) {
+      setInventory({ id: 'global', stickQuantity: 0, potQuantity: 0 });
+      setLoading(false);
+      return;
+    }
+
+    const docRef = doc(db, 'inventory', 'global');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setInventory(docSnap.data() as InventoryStock);
+      } else {
+        setInventory({ id: 'global', stickQuantity: 0, potQuantity: 0 });
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching inventory in realtime:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  return { inventory, loading, reload: loadInventory };
+  return { inventory, loading, reload: () => {} };
 }
 
 export function useExpenses() {
@@ -288,7 +349,7 @@ export function useExpenses() {
   return { expenses, loading, reload: () => {} };
 }
 
-export async function addLog(action: string, details: string) {
+export async function addLog(action: string, details: string, deletedPayload?: any) {
   const user = auth.currentUser;
   if (!user) return;
   const log: AppLog = {
@@ -296,12 +357,52 @@ export async function addLog(action: string, details: string) {
     timestamp: new Date().toISOString(),
     userEmail: user.email || 'Unknown',
     action,
-    details
+    details,
   };
+  if (deletedPayload !== undefined && deletedPayload !== null) {
+    log.deletedPayload = JSON.stringify(deletedPayload);
+  }
   try {
     await setDoc(doc(db, 'logs', log.id), log);
   } catch (error) {
     console.error("Error adding log:", error);
+  }
+}
+
+export async function revokeDeletedRecord(log: AppLog): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  if (!log.deletedPayload) {
+    throw new Error("No backup payload found for this record.");
+  }
+
+  triggerWriteStart();
+  try {
+    const payload = JSON.parse(log.deletedPayload);
+    
+    if (log.action === 'DELETE_ENTRY') {
+      await setDoc(doc(db, 'entries', payload.id), payload);
+      await addLog('REVOKE_DELETE_ENTRY', `Revoked (restored) daily entry for ${payload.date}`);
+    } else if (log.action === 'DELETE_EXPENSE') {
+      await setDoc(doc(db, 'expenses', payload.id), payload);
+      await addLog('REVOKE_DELETE_EXPENSE', `Revoked (restored) expense of ₹${payload.amount} on ${payload.date}`);
+    } else {
+      throw new Error("Unsupported revoke action: " + log.action);
+    }
+
+    // Update log to mark as revoked and remove payload
+    const updatedLog: AppLog = {
+      id: log.id,
+      timestamp: log.timestamp,
+      userEmail: log.userEmail,
+      action: `${log.action}_REVOKED`,
+      details: `${log.details} (REVOKED/RESTORED)`,
+    };
+    
+    await setDoc(doc(db, 'logs', log.id), updatedLog);
+  } catch (error) {
+    console.error("Error revoking deleted record:", error);
+    throw error;
   }
 }
 

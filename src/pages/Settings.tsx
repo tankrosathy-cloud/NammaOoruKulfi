@@ -393,10 +393,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
           </div>
           <Button 
             onClick={async () => {
-              if (confirm('Are you sure you want to sign out?')) {
-                const { signOut } = await import('firebase/auth');
-                await signOut(auth);
-              }
+              const { signOut } = await import('firebase/auth');
+              await signOut(auth);
             }} 
             className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
           >
