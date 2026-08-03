@@ -112,15 +112,15 @@ export default function AppShell() {
       <main className="flex-1 overflow-y-auto pb-24">
         {activeTab === 'dashboard' && role === 'owner' && <Dashboard />}
         {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
-        {activeTab === 'expense' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
-        {activeTab === 'reports' && <Reports onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
+        {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
+        {activeTab === 'reports' && <Reports role={role} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
         {activeTab === 'planner' && <Planner />}
         {activeTab === 'settings' && <SettingsPage role={role} />}
         {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
       </main>
 
-      {/* Floating Action Button for Quick Expense */}
-      {activeTab !== 'expense' && (
+      {/* Floating Action Button for Quick Expense - Owner only */}
+      {activeTab !== 'expense' && role === 'owner' && (
         <motion.button
           onClick={() => setIsQuickExpenseOpen(true)}
           initial={{ scale: 0, opacity: 0 }}
@@ -164,13 +164,15 @@ export default function AppShell() {
           onClick={() => navigateTab('add')} 
           isDark={isDark}
         />
-        <NavItem 
-          icon={<Wallet className="w-5 h-5" />} 
-          label="EXP" 
-          active={activeTab === 'expense'} 
-          onClick={() => navigateTab('expense')} 
-          isDark={isDark}
-        />
+        {role === 'owner' && (
+          <NavItem 
+            icon={<Wallet className="w-5 h-5" />} 
+            label="EXP" 
+            active={activeTab === 'expense'} 
+            onClick={() => navigateTab('expense')} 
+            isDark={isDark}
+          />
+        )}
         <NavItem 
           icon={<List className="w-5 h-5" />} 
           label="REC" 

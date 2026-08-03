@@ -9,7 +9,8 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { useTheme } from '../context/ThemeContext';
 
 import { ExpenseEntry } from '../types';
-export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
+export default function Reports({ role = 'owner', onEdit, onEditExpense }: { role?: 'owner' | 'manager', onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
+  const isOwner = role === 'owner';
   const { entries, loading, reload } = useEntries();
   const { expenses, loading: expensesLoading, reload: reloadExpenses } = useExpenses();
   const [expenseDeleteConfirmId, setExpenseDeleteConfirmId] = useState<string | null>(null);
@@ -61,11 +62,13 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
       { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0 }
     );
     
-    // Add standalone expenses to totals
-    filteredExps.forEach(exp => {
-        totals.expenses += exp.amount;
-        totals.finalAmount -= exp.amount;
-    });
+    // Add standalone expenses to totals for owner only
+    if (isOwner) {
+      filteredExps.forEach(exp => {
+          totals.expenses += exp.amount;
+          totals.finalAmount -= exp.amount;
+      });
+    }
 
 
     return { filteredEntries: filtered, filteredExpenses: filteredExps, chartData, totals };
@@ -142,12 +145,14 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Card className={isDark ? 'bg-cyan-950/40 border-cyan-900/50' : 'bg-cyan-100/90 border-cyan-300 shadow-sm shadow-cyan-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Revenue</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.revenue)}</p>
-          </CardContent>
-        </Card>
+        {isOwner && (
+          <Card className={isDark ? 'bg-cyan-950/40 border-cyan-900/50' : 'bg-cyan-100/90 border-cyan-300 shadow-sm shadow-cyan-100/30'}>
+            <CardContent className="p-5">
+              <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Revenue</p>
+              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.revenue)}</p>
+            </CardContent>
+          </Card>
+        )}
         <Card className={isDark ? 'bg-pink-950/40 border-pink-900/50' : 'bg-pink-100/90 border-pink-300 shadow-sm shadow-pink-100/30'}>
           <CardContent className="p-5">
             <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-pink-400 font-bold' : 'text-pink-800 font-black'}`}>Total Expenses</p>
@@ -160,12 +165,14 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
             <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.shortage)}</p>
           </CardContent>
         </Card>
-        <Card className={isDark ? 'bg-emerald-950/40 border-emerald-900/50' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.finalAmount)}</p>
-          </CardContent>
-        </Card>
+        {isOwner && (
+          <Card className={isDark ? 'bg-emerald-950/40 border-emerald-900/50' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
+            <CardContent className="p-5">
+              <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
+              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.finalAmount)}</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card className={isDark ? 'bg-slate-900/40 border-slate-850/60' : 'bg-slate-50 border-slate-200 shadow-inner'}>
@@ -181,7 +188,7 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
         </CardContent>
       </Card>
 
-      {chartData.length > 0 && (
+      {chartData.length > 0 && isOwner && (
         <Card>
           <CardContent className="p-5 pt-6 h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -209,10 +216,12 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
                     <div>
                       <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3">
-                        <div>
-                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rev</p>
-                           <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
-                        </div>
+                        {isOwner && (
+                          <div>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rev</p>
+                             <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
+                          </div>
+                        )}
                         <div>
                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Exp</p>
                            <p className="font-black text-sm text-pink-500">{formatCurrency((entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
@@ -262,55 +271,57 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
         )}
       </div>
 
-      <div>
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-4 mt-8">Other Expenses</h3>
-        {filteredExpenses.length === 0 ? (
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No expenses for this month.</p>
-        ) : (
-          <div className="space-y-4">
-            {filteredExpenses.map(expense => (
-              <Card key={expense.id} className="border-red-100 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20">
-                <CardContent className="p-5">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(expense.date), 'dd MMM yyyy')}</span>
-                      <div className="flex items-center gap-4 mt-3">
-                        <div>
-                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount</p>
-                           <p className="font-black text-sm text-pink-500">{formatCurrency(expense.amount)}</p>
-                        </div>
-                        <div>
-                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">By</p>
-                           <p className="font-black text-sm text-slate-700 dark:text-slate-300">{expense.paidBy}</p>
+      {isOwner && (
+        <div>
+          <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-4 mt-8">Other Expenses</h3>
+          {filteredExpenses.length === 0 ? (
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No expenses for this month.</p>
+          ) : (
+            <div className="space-y-4">
+              {filteredExpenses.map(expense => (
+                <Card key={expense.id} className="border-red-100 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20">
+                  <CardContent className="p-5">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(expense.date), 'dd MMM yyyy')}</span>
+                        <div className="flex items-center gap-4 mt-3">
+                          <div>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount</p>
+                             <p className="font-black text-sm text-pink-500">{formatCurrency(expense.amount)}</p>
+                          </div>
+                          <div>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">By</p>
+                             <p className="font-black text-sm text-slate-700 dark:text-slate-300">{expense.paidBy}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-500 hover:bg-cyan-500/10 rounded-full" onClick={() => onEditExpense(expense)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      {expenseDeleteConfirmId === expense.id ? (
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400" onClick={() => setExpenseDeleteConfirmId(null)}>Cancel</Button>
-                          <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDeleteExpense(expense.id)}>Delete</Button>
-                        </div>
-                      ) : (
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setExpenseDeleteConfirmId(expense.id)}>
-                          <Trash2 className="h-4 w-4" />
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-500 hover:bg-cyan-500/10 rounded-full" onClick={() => onEditExpense(expense)}>
+                          <Edit2 className="h-4 w-4" />
                         </Button>
-                      )}
+                        {expenseDeleteConfirmId === expense.id ? (
+                          <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400" onClick={() => setExpenseDeleteConfirmId(null)}>Cancel</Button>
+                            <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDeleteExpense(expense.id)}>Delete</Button>
+                          </div>
+                        ) : (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setExpenseDeleteConfirmId(expense.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="bg-slate-100/60 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200/40 dark:border-slate-800/50 mt-4">
-                    <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">{expense.category}</p>
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug uppercase">{expense.notes || 'No notes'}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+                    <div className="bg-slate-100/60 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200/40 dark:border-slate-800/50 mt-4">
+                      <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">{expense.category}</p>
+                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug uppercase">{expense.notes || 'No notes'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
