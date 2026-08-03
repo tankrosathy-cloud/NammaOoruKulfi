@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useEntries, useSettings, useExpenses } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
-import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity } from 'lucide-react';
+import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
@@ -142,6 +142,32 @@ export default function Dashboard() {
   }
 
   const latest = stats.latest;
+
+  const nextDaySuggestion = useMemo(() => {
+    if (!entries || entries.length === 0) {
+      return { stick: 40, pot: 25, avgStick: 35, avgPot: 20, hasData: false };
+    }
+    const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+    const recentEntries = sorted.slice(0, 5);
+
+    const totalStick = recentEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+    const totalPot = recentEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+
+    const avgStick = Math.round(totalStick / recentEntries.length);
+    const avgPot = Math.round(totalPot / recentEntries.length);
+
+    // 15% safety buffer, rounded up to nearest 5
+    const suggestStickVal = Math.max(10, Math.ceil((avgStick * 1.15) / 5) * 5);
+    const suggestPotVal = Math.max(10, Math.ceil((avgPot * 1.15) / 5) * 5);
+
+    return {
+      stick: suggestStickVal,
+      pot: suggestPotVal,
+      avgStick,
+      avgPot,
+      hasData: true
+    };
+  }, [entries]);
 
   const cardBg = isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-250 shadow-md shadow-slate-200/40';
   const labelColor = isDark ? 'text-slate-400' : 'text-slate-700 font-extrabold';
@@ -442,6 +468,49 @@ export default function Dashboard() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {nextDaySuggestion.hasData && (
+        <Card className={`overflow-hidden border ${
+          isDark 
+            ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800' 
+            : 'bg-white text-slate-800 border-slate-200/80 shadow-md shadow-slate-100'
+        }`}>
+          <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60 flex flex-row items-center justify-between">
+            <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
+              <Sparkles className="w-4.5 h-4.5 text-pink-500 animate-pulse" /> Next Day Estimated Load Suggestion
+            </CardTitle>
+            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase ${
+              isDark ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800' : 'bg-cyan-50 text-cyan-700 border border-cyan-100'
+            }`}>
+              Predictive Insights
+            </span>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Based on recent average sales from the last 5 operational days, we recommend preparing and loading the following quantities for the next shift to minimize stockout risk:
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Stick Kulfi Suggestion</span>
+                <span className="text-3xl font-black text-cyan-500 leading-none mt-1">{nextDaySuggestion.stick} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgStick} pcs</span>
+              </div>
+
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Pot Kulfi Suggestion</span>
+                <span className="text-3xl font-black text-pink-500 leading-none mt-1">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPot} pcs</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 flex gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase">
+              <span className="font-black">💡 Recommendation Note:</span>
+              <span>A 15% safety stock buffer is auto-included and rounded up to the nearest multiple of 5.</span>
             </div>
           </CardContent>
         </Card>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry } from '../types';
 import { saveEntry, useSettings, getEntries, useEntries, useInventory } from '../store';
@@ -7,6 +7,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
+import { Sparkles } from 'lucide-react';
 
 export default function AddEntry({ onSave, initialDate }: { onSave: () => void, initialDate?: string, key?: string }) {
   const { settings } = useSettings();
@@ -83,6 +84,39 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
   const totalPotSold = entries.reduce((sum, e) => sum + (e.potSold || 0), 0);
   const availableStick = Math.max(0, (inventory.stickQuantity || 0) - totalStickSold);
   const availablePot = Math.max(0, (inventory.potQuantity || 0) - totalPotSold);
+
+  // Suggested load calculation based on recent average sales
+  const suggestedLoad = useMemo(() => {
+    if (!entries || entries.length === 0) {
+      return { stick: 40, pot: 25, avgStick: 35, avgPot: 20, hasData: false };
+    }
+    const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+    // Filter previous days relative to selected date to make it robust
+    const priorEntries = sorted.filter(e => e.date < date);
+    const referenceEntries = priorEntries.length > 0 ? priorEntries.slice(0, 5) : sorted.slice(0, 5);
+
+    if (referenceEntries.length === 0) {
+      return { stick: 40, pot: 25, avgStick: 35, avgPot: 20, hasData: false };
+    }
+
+    const totalStick = referenceEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+    const totalPot = referenceEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+
+    const avgStick = Math.round(totalStick / referenceEntries.length);
+    const avgPot = Math.round(totalPot / referenceEntries.length);
+
+    // Recommend slightly higher load to prevent running out of stock (with 15% buffer), rounded up to nearest 5
+    const suggestStickVal = Math.max(10, Math.ceil((avgStick * 1.15) / 5) * 5);
+    const suggestPotVal = Math.max(10, Math.ceil((avgPot * 1.15) / 5) * 5);
+
+    return {
+      stick: suggestStickVal,
+      pot: suggestPotVal,
+      avgStick,
+      avgPot,
+      hasData: true
+    };
+  }, [entries, date]);
 
   // Calculate sold values
   const stickLoadedVal = parseInt(formData.stickLoaded) || 0;
@@ -167,6 +201,37 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
             <div className="space-y-6 pt-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-widest mb-5 text-cyan-600 dark:text-cyan-400">Inventory</h3>
+                
+                {suggestedLoad.hasData && (
+                  <div className="mb-6 p-4 rounded-2xl border border-cyan-500/10 bg-cyan-500/5 dark:bg-cyan-950/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-500 shrink-0 animate-pulse" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Next Day Load Suggestion</span>
+                      </div>
+                      <p className="text-xs font-black text-slate-800 dark:text-slate-200">
+                        Stick: <span className="text-cyan-600 dark:text-cyan-400">{suggestedLoad.stick} pcs</span> (avg: {suggestedLoad.avgStick}) | Pot: <span className="text-purple-600 dark:text-purple-400">{suggestedLoad.pot} pcs</span> (avg: {suggestedLoad.avgPot})
+                      </p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                        Based on recent average sales with 15% safety buffer
+                      </p>
+                    </div>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => {
+                        setFormData(prev => ({
+                          ...prev,
+                          stickLoaded: suggestedLoad.stick.toString(),
+                          potLoaded: suggestedLoad.pot.toString()
+                        }));
+                      }}
+                      className="h-8 rounded-xl text-[10px] font-extrabold uppercase px-3 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 shrink-0 self-start sm:self-center"
+                    >
+                      Use Suggestion
+                    </Button>
+                  </div>
+                )}
                 
                 <div className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
