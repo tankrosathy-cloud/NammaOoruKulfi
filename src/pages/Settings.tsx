@@ -174,23 +174,23 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
 
       {activeTab === 'settings' && role === 'owner' ? (
         <div className="space-y-6">
-        <form onSubmit={handleSettingsSubmit} className="space-y-6">
-          <Card>
-            <CardContent className="p-6 space-y-6">
-              <h3 className="text-xs font-black uppercase tracking-widest border-b border-slate-100 dark:border-slate-800/60 pb-4 text-cyan-600 dark:text-cyan-400 flex justify-between items-center">
-                Goals
-                {successMsg && <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">SAVED!</span>}
-              </h3>
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Monthly Sales Goal (₹)</Label>
-                <Input name="monthlyGoal" type="number" value={settingsData.monthlyGoal} onChange={handleSettingsChange} required className="border-emerald-200 dark:border-emerald-900/50 focus-visible:ring-emerald-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Button type="submit" className="w-full h-14" disabled={savingSettings}>
-            {savingSettings ? 'SAVING...' : 'SAVE SETTINGS'}
-          </Button>
-        </form>
+          <form onSubmit={handleSettingsSubmit} className="space-y-6">
+            <Card>
+              <CardContent className="p-6 space-y-6">
+                <h3 className="text-xs font-black uppercase tracking-widest border-b border-slate-100 dark:border-slate-800/60 pb-4 text-cyan-600 dark:text-cyan-400 flex justify-between items-center">
+                  Goals
+                  {successMsg && <span className="text-emerald-500 dark:text-emerald-400 text-[10px]">SAVED!</span>}
+                </h3>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Monthly Sales Goal (₹)</Label>
+                  <Input name="monthlyGoal" type="number" value={settingsData.monthlyGoal} onChange={handleSettingsChange} required className="border-emerald-200 dark:border-emerald-900/50 focus-visible:ring-emerald-500" />
+                </div>
+              </CardContent>
+            </Card>
+            <Button type="submit" className="w-full h-14" disabled={savingSettings}>
+              {savingSettings ? 'SAVING...' : 'SAVE SETTINGS'}
+            </Button>
+          </form>
         </div>
       ) : (
         <div className="space-y-6">

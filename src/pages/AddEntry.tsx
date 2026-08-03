@@ -240,6 +240,14 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
                  <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Shortage</span>
                  <span className={`font-black text-xl ${shortage > 0 ? 'text-pink-600' : 'text-emerald-600 dark:text-emerald-400'}`}>₹{shortage}</span>
                </div>
+               <div className="flex justify-between text-sm items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40">
+                 <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stick Kulfi Sold</span>
+                 <span className="font-black text-sm text-cyan-600 dark:text-cyan-400">{stickSold} pcs</span>
+               </div>
+               <div className="flex justify-between text-sm items-center">
+                 <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pot Kulfi Sold</span>
+                 <span className="font-black text-sm text-purple-600 dark:text-purple-400">{potSold} pcs</span>
+               </div>
             </div>
 
           </CardContent>

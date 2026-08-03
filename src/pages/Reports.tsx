@@ -54,9 +54,11 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
         acc.expenses += totalExp;
         acc.shortage += (e.shortage || 0);
         acc.finalAmount += (netSales - totalExp);
+        acc.stickSold += (e.stickSold || 0);
+        acc.potSold += (e.potSold || 0);
         return acc;
       },
-      { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0 }
+      { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0 }
     );
     
     // Add standalone expenses to totals
@@ -166,6 +168,19 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
         </Card>
       </div>
 
+      <Card className={isDark ? 'bg-slate-900/40 border-slate-850/60' : 'bg-slate-50 border-slate-200 shadow-inner'}>
+        <CardContent className="p-5 grid grid-cols-2 gap-4 divide-x divide-slate-200/80 dark:divide-slate-800/40">
+          <div>
+            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Stick Sold</p>
+            <p className="text-xl font-black text-slate-950 dark:text-white">{totals.stickSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+          </div>
+          <div className="pl-4">
+            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Pot Sold</p>
+            <p className="text-xl font-black text-slate-950 dark:text-white">{totals.potSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+          </div>
+        </CardContent>
+      </Card>
+
       {chartData.length > 0 && (
         <Card>
           <CardContent className="p-5 pt-6 h-64">
@@ -193,7 +208,7 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
-                      <div className="flex items-center gap-4 mt-3">
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3">
                         <div>
                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rev</p>
                            <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
@@ -201,6 +216,14 @@ export default function Reports({ onEdit, onEditExpense }: { onEdit: (date: stri
                         <div>
                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Exp</p>
                            <p className="font-black text-sm text-pink-500">{formatCurrency((entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
+                        </div>
+                        <div>
+                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Stick Sold</p>
+                           <p className="font-black text-sm text-amber-500">{entry.stickSold || 0}</p>
+                        </div>
+                        <div>
+                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pot Sold</p>
+                           <p className="font-black text-sm text-purple-500">{entry.potSold || 0}</p>
                         </div>
                       </div>
                     </div>
