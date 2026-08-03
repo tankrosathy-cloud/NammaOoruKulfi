@@ -13,6 +13,7 @@ import { signOut } from 'firebase/auth';
 import { useTheme } from './context/ThemeContext';
 import { motion } from 'motion/react';
 import QuickExpenseModal from './components/QuickExpenseModal';
+import SyncStatus from './components/SyncStatus';
 
 export default function AppShell() {
   const { theme, toggleTheme } = useTheme();
@@ -52,25 +53,26 @@ export default function AppShell() {
     <div className={`flex flex-col h-screen font-sans overflow-hidden transition-colors duration-300 ${
       isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
     }`}>
-      <header className={`px-6 py-5 sticky top-0 z-10 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
+      <header className={`px-4 sm:px-6 py-4 sm:py-5 sticky top-0 z-10 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
         isDark 
           ? 'bg-[#0B0F19]/90 border-slate-800/60' 
           : 'bg-white border-slate-300 shadow-md shadow-slate-100'
       }`}>
-        <div className="flex items-center gap-3">
-          <Logo className={`w-10 h-10 transition-all ${
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Logo className={`w-8 h-8 sm:w-10 sm:h-10 transition-all ${
             isDark ? 'shadow-lg shadow-cyan-500/20' : 'shadow-md shadow-cyan-500/10'
           }`} />
           <div className="flex flex-col">
-            <span className={`text-[10px] font-bold tracking-[0.2em] uppercase mb-1 ${
+            <span className={`text-[8px] sm:text-[10px] font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase mb-0.5 sm:mb-1 ${
               isDark ? 'text-cyan-400' : 'text-cyan-600'
-            }`}>Sathyamangalam Outpost</span>
-            <h1 className={`text-2xl font-black tracking-tighter leading-none uppercase ${
+            }`}>Sathyamangalam</span>
+            <h1 className={`text-lg sm:text-2xl font-black tracking-tighter leading-none uppercase ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}>Namma Ooru <span className="text-pink-500">Kulfi</span></h1>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
+          <SyncStatus />
           <button 
             onClick={toggleTheme} 
             className={`transition-colors p-1.5 rounded-lg border ${
@@ -103,6 +105,7 @@ export default function AppShell() {
                 ? 'text-slate-400 hover:text-white hover:bg-slate-900/50' 
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
+            title="Log Out"
           >
             <LogOut className="w-4.5 h-4.5" />
           </button>

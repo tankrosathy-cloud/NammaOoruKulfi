@@ -4,7 +4,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Package, Edit2, KeyRound } from 'lucide-react';
+import { Package, Edit2, KeyRound, LogOut } from 'lucide-react';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { InventoryStock } from '../types';
@@ -377,6 +377,31 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
               {passwordLoading ? 'UPDATING...' : 'UPDATE PASSWORD'}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Session Management Section */}
+      <Card className="border border-rose-200 dark:border-rose-900/50 bg-rose-50/5 dark:bg-rose-950/5">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-700 dark:text-slate-350 flex items-center gap-2">
+              <LogOut className="w-4 h-4 text-rose-500" /> Account Session
+            </h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">
+              Logged in as <span className="text-pink-600 dark:text-pink-400 font-extrabold">{auth.currentUser?.email || 'N/A'}</span>
+            </p>
+          </div>
+          <Button 
+            onClick={async () => {
+              if (confirm('Are you sure you want to sign out?')) {
+                const { signOut } = await import('firebase/auth');
+                await signOut(auth);
+              }
+            }} 
+            className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" /> SIGN OUT / LOGOUT
+          </Button>
         </CardContent>
       </Card>
     </div>

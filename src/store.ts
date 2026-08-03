@@ -9,6 +9,12 @@ const DEFAULT_SETTINGS: Settings = {
   monthlyGoal: 150000,
 };
 
+function triggerWriteStart() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('firestore-write-start'));
+  }
+}
+
 export async function getEntries(): Promise<DailyEntry[]> {
   const user = auth.currentUser;
   if (!user) return [];
@@ -31,6 +37,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   const entryWithUser = {
     ...entry,
     userId: user.uid
@@ -49,6 +56,7 @@ export async function deleteEntry(id: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   try {
     await deleteDoc(doc(db, 'entries', id));
     await addLog('DELETE_ENTRY', `Deleted entry with ID ${id}`);
@@ -85,6 +93,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   try {
     await setDoc(doc(db, 'settings', 'global'), settings);
   } catch (error) {
@@ -120,6 +129,7 @@ export async function saveInventoryStock(item: InventoryStock): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   const itemWithUser = {
     ...item,
     id: 'global',
@@ -156,6 +166,7 @@ export async function saveExpense(expense: ExpenseEntry): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   const expenseWithUser = {
     ...expense,
     userId: user.uid
@@ -174,6 +185,7 @@ export async function deleteExpense(id: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   
+  triggerWriteStart();
   try {
     await deleteDoc(doc(db, 'expenses', id));
     await addLog('DELETE_EXPENSE', `Deleted expense with ID ${id}`);
@@ -296,6 +308,8 @@ export async function addLog(action: string, details: string) {
 export async function clearLogs(): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
+  
+  triggerWriteStart();
   try {
     const q = query(collection(db, 'logs'));
     const snapshot = await getDocs(q);
