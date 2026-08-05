@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog } from './types';
 import { db, auth } from './lib/firebase';
-import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, where, orderBy, limit } from 'firebase/firestore';
 
 const DEFAULT_SETTINGS: Settings = {
   stickPrice: 40,
@@ -57,7 +57,7 @@ export async function deleteEntry(id: string): Promise<void> {
   if (!user) return;
   
   const username = (user.email || '').split('@')[0].toLowerCase();
-  const isOwner = ['nadeem', 'yuvaraj'].includes(username);
+  const isOwner = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete entries.");
   }
@@ -201,7 +201,7 @@ export async function deleteExpense(id: string): Promise<void> {
   if (!user) return;
   
   const username = (user.email || '').split('@')[0].toLowerCase();
-  const isOwner = ['nadeem', 'yuvaraj'].includes(username);
+  const isOwner = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete expenses.");
   }
@@ -225,128 +225,163 @@ export async function deleteExpense(id: string): Promise<void> {
   }
 }
 
-// React Hooks
-export function useEntries() {
+// React Hooks & Context
+import { createContext, useContext, ReactNode } from 'react';
+
+interface StoreState {
+  loadMoreEntries: () => void;
+  hasMoreEntries: boolean;
+  loadMoreExpenses: () => void;
+  hasMoreExpenses: boolean;
+  entries: DailyEntry[];
+  entriesLoading: boolean;
+  settings: Settings;
+  settingsLoading: boolean;
+  inventory: InventoryStock;
+  inventoryLoading: boolean;
+  expenses: ExpenseEntry[];
+  expensesLoading: boolean;
+}
+
+const StoreContext = createContext<StoreState | null>(null);
+
+export function StoreProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<DailyEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entriesLoading, setEntriesLoading] = useState(true);
+  const [entriesLimit, setEntriesLimit] = useState(200);
+  const [hasMoreEntries, setHasMoreEntries] = useState(true);
+  
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+
+  const [inventory, setInventory] = useState<InventoryStock>(DEFAULT_INVENTORY);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
+  const [expensesLoading, setExpensesLoading] = useState(true);
+  const [expensesLimit, setExpensesLimit] = useState(200);
+  const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
 
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
       setEntries([]);
-      setLoading(false);
+      setSettings(DEFAULT_SETTINGS);
+      setInventory(DEFAULT_INVENTORY);
+      setExpenses([]);
+      setEntriesLoading(false);
+      setSettingsLoading(false);
+      setInventoryLoading(false);
+      setExpensesLoading(false);
       return;
     }
-    
-    const q = query(collection(db, 'entries'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+
+    const unsubEntries = onSnapshot(query(collection(db, 'entries'), orderBy('date', 'desc'), limit(entriesLimit)), (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as DailyEntry));
       setEntries(docs.sort((a, b) => b.date.localeCompare(a.date)));
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching entries in realtime:", error);
-      setLoading(false);
+      setHasMoreEntries(docs.length >= entriesLimit);
+      setEntriesLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  return { entries, loading, reload: () => {} };
-}
-
-export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      setSettings(DEFAULT_SETTINGS);
-      setLoading(false);
-      return;
-    }
-
-    const docRef = doc(db, 'settings', 'global');
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as Settings;
-        setSettings({
-          ...data,
-          stickPrice: 40,
-          potPrice: 50,
-        });
+        setSettings({ ...data, stickPrice: 40, potPrice: 50 });
       } else {
         setSettings(DEFAULT_SETTINGS);
       }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching settings in realtime:", error);
-      setLoading(false);
+      setSettingsLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  return { settings, loading, reload: () => {} };
-}
-
-export function useInventory() {
-  const [inventory, setInventory] = useState<InventoryStock>({ id: 'global', stickQuantity: 0, potQuantity: 0 });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      setInventory({ id: 'global', stickQuantity: 0, potQuantity: 0 });
-      setLoading(false);
-      return;
-    }
-
-    const docRef = doc(db, 'inventory', 'global');
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+    const unsubInventory = onSnapshot(doc(db, 'inventory', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         setInventory(docSnap.data() as InventoryStock);
       } else {
-        setInventory({ id: 'global', stickQuantity: 0, potQuantity: 0 });
+        setInventory(DEFAULT_INVENTORY);
       }
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching inventory in realtime:", error);
-      setLoading(false);
+      setInventoryLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    const unsubExpenses = onSnapshot(query(collection(db, 'expenses'), orderBy('date', 'desc'), limit(expensesLimit)), (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
+      setExpenses(docs.sort((a, b) => b.date.localeCompare(a.date)));
+      setHasMoreExpenses(docs.length >= expensesLimit);
+      setExpensesLoading(false);
+    });
 
-  return { inventory, loading, reload: () => {} };
+    return () => {
+      unsubEntries();
+      unsubSettings();
+      unsubInventory();
+      unsubExpenses();
+    };
+  }, [entriesLimit, expensesLimit]);
+
+  const loadMoreEntries = () => setEntriesLimit(prev => prev + 100);
+  const loadMoreExpenses = () => setExpensesLimit(prev => prev + 100);
+
+  return (
+    <StoreContext.Provider value={{
+      entries, entriesLoading, loadMoreEntries, hasMoreEntries,
+      settings, settingsLoading,
+      inventory, inventoryLoading,
+      expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses
+    }}>
+      {children}
+    </StoreContext.Provider>
+  );
+}
+
+export function useEntries() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useEntries must be used within StoreProvider");
+  return { entries: ctx.entries, loading: ctx.entriesLoading, loadMore: ctx.loadMoreEntries, hasMore: ctx.hasMoreEntries, reload: () => {} };
+}
+
+export function useSettings() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useSettings must be used within StoreProvider");
+  return { settings: ctx.settings, loading: ctx.settingsLoading, reload: () => {} };
+}
+
+export function useInventory() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useInventory must be used within StoreProvider");
+  return { inventory: ctx.inventory, loading: ctx.inventoryLoading, reload: () => {} };
 }
 
 export function useExpenses() {
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useExpenses must be used within StoreProvider");
+  return { expenses: ctx.expenses, loading: ctx.expensesLoading, loadMore: ctx.loadMoreExpenses, hasMore: ctx.hasMoreExpenses, reload: () => {} };
+}
+
+export function useLogs() {
+  const [logs, setLogs] = useState<AppLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
-      setExpenses([]);
+      setLogs([]);
       setLoading(false);
       return;
     }
-    
-    const q = query(collection(db, 'expenses'));
+    // ADDED limit(100) TO OPTIMIZE LOGS READS
+    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
-      setExpenses(docs.sort((a, b) => b.date.localeCompare(a.date)));
+      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
+      setLogs(docs);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching expenses in realtime:", error);
+      console.error("Error fetching logs in realtime:", error);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  return { expenses, loading, reload: () => {} };
+  return { logs, loading };
 }
 
 export async function addLog(action: string, details: string, deletedPayload?: any) {
@@ -421,31 +456,4 @@ export async function clearLogs(): Promise<void> {
     console.error("Error clearing logs:", error);
     throw error;
   }
-}
-
-export function useLogs() {
-  const [logs, setLogs] = useState<AppLog[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      setLogs([]);
-      setLoading(false);
-      return;
-    }
-    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
-      setLogs(docs);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching logs in realtime:", error);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return { logs, loading };
 }

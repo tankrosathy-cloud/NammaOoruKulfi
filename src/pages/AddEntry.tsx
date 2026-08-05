@@ -30,54 +30,50 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
   });
 
   useEffect(() => {
-    getEntries().then(entries => {
-      // Find if entry for this date exists
-      const existingEntry = entries.find(e => e.date === date);
-      
-      if (existingEntry) {
-        setIsEditing(true);
-        setEntryId(existingEntry.id);
-        setFormData({
-          stickLoaded: (existingEntry.stickLoaded || '').toString(),
-          stickBalance: (existingEntry.stickBalance || '').toString(),
-          potLoaded: (existingEntry.potLoaded || '').toString(),
-          potBalance: (existingEntry.potBalance || '').toString(),
-          cashBagLoaded: (existingEntry.cashBagLoaded || '').toString(),
-          cashBagTotal: (existingEntry.cashBagTotal || '').toString(),
-          phonePe: (existingEntry.phonePe || '').toString(),
-          discount: (existingEntry.discount || '').toString(),
-          additionalExpenses: (existingEntry.additionalExpenses || '').toString(),
-          expenseDetails: existingEntry.expenseDetails || '',
-          bonus: (existingEntry.bonus || '').toString(),
-          notes: existingEntry.notes || ''
-        });
-      } else {
-        setIsEditing(false);
-        setEntryId(uuidv4());
-        setFormData({
-          stickLoaded: '', stickBalance: '',
-          potLoaded: '', potBalance: '',
-          cashBagLoaded: '', cashBagTotal: '', phonePe: '',
-          discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
-          notes: ''
-        });
-      }
+    if (!entries) return;
+    const existingEntry = entries.find(e => e.date === date);
+    if (existingEntry) {
+      setIsEditing(true);
+      setEntryId(existingEntry.id);
+      setFormData({
+        stickLoaded: (existingEntry.stickLoaded || '').toString(),
+        stickBalance: (existingEntry.stickBalance || '').toString(),
+        potLoaded: (existingEntry.potLoaded || '').toString(),
+        potBalance: (existingEntry.potBalance || '').toString(),
+        cashBagLoaded: (existingEntry.cashBagLoaded || '').toString(),
+        cashBagTotal: (existingEntry.cashBagTotal || '').toString(),
+        phonePe: (existingEntry.phonePe || '').toString(),
+        discount: (existingEntry.discount || '').toString(),
+        additionalExpenses: (existingEntry.additionalExpenses || '').toString(),
+        expenseDetails: existingEntry.expenseDetails || '',
+        bonus: (existingEntry.bonus || '').toString(),
+        notes: existingEntry.notes || ''
+      });
+    } else {
+      setIsEditing(false);
+      setEntryId(uuidv4());
+      setFormData({
+        stickLoaded: '', stickBalance: '',
+        potLoaded: '', potBalance: '',
+        cashBagLoaded: '', cashBagTotal: '', phonePe: '',
+        discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
+        notes: ''
+      });
+    }
 
-      // Find previous balances (the entry with the largest date that is strictly less than current date)
-      const prevEntry = [...entries]
-        .filter(e => e.date < date)
-        .sort((a, b) => b.date.localeCompare(a.date))[0];
+    const prevEntry = [...entries]
+      .filter(e => e.date < date)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
 
-      if (prevEntry) {
-        setPrevBalances({
-          stick: prevEntry.stickBalance || 0,
-          pot: prevEntry.potBalance || 0
-        });
-      } else {
-        setPrevBalances({ stick: 0, pot: 0 });
-      }
-    });
-  }, [date]);
+    if (prevEntry) {
+      setPrevBalances({
+        stick: prevEntry.stickBalance || 0,
+        pot: prevEntry.potBalance || 0
+      });
+    } else {
+      setPrevBalances({ stick: 0, pot: 0 });
+    }
+  }, [date, entries]);
 
   // Find previous balances (the entry with the largest date that is strictly less than current date)
   const totalStickSold = entries.reduce((sum, e) => sum + (e.stickSold || 0), 0);

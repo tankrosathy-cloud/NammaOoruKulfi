@@ -9,19 +9,20 @@ import AddExpense from './pages/AddExpense';
 import HistoryLogs from './pages/HistoryLogs';
 import Planner from './pages/Planner';
 import { auth } from './lib/firebase';
+import { StoreProvider } from './store';
 import { signOut } from 'firebase/auth';
 import { useTheme } from './context/ThemeContext';
 import { motion } from 'motion/react';
 import QuickExpenseModal from './components/QuickExpenseModal';
 import SyncStatus from './components/SyncStatus';
 
-export default function AppShell() {
+function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
 
   const userEmail = auth.currentUser?.email || '';
   const username = userEmail.split('@')[0].toLowerCase();
-  const role = ['nadeem', 'yuvaraj'].includes(username) ? 'owner' : 'manager';
+  const role = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username) ? 'owner' : 'manager';
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'planner' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
   const [editDate, setEditDate] = useState<string | undefined>(undefined);
@@ -121,6 +122,22 @@ export default function AppShell() {
         {activeTab === 'settings' && <SettingsPage role={role} />}
         {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
       </main>
+
+      {/* Floating Action Button for Quick Job - All users */}
+      {activeTab !== 'add' && (
+        <motion.button
+          onClick={() => navigateTab('add')}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className={`fixed ${activeTab !== 'expense' && role === 'owner' ? 'bottom-40' : 'bottom-24'} right-5 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white flex items-center justify-center shadow-[0_8px_25px_rgba(6,182,212,0.35)] dark:shadow-[0_8px_30px_rgba(6,182,212,0.5)] transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50`}
+          title="Quick Job Entry"
+        >
+          <PlusCircle className="w-6 h-6 animate-pulse" />
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-pink-500 text-[9px] font-black flex items-center justify-center border-2 border-white dark:border-slate-900">⚡</span>
+        </motion.button>
+      )}
 
       {/* Floating Action Button for Quick Expense - Owner only */}
       {activeTab !== 'expense' && role === 'owner' && (
@@ -222,3 +239,12 @@ function NavItem({ icon, label, active, onClick, isDark }: { icon: React.ReactNo
   );
 }
 
+
+
+export default function AppShell() {
+  return (
+    <StoreProvider>
+      <AppShellContent />
+    </StoreProvider>
+  );
+}

@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useEntries, useSettings, useExpenses } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
-import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles } from 'lucide-react';
+import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
@@ -32,12 +32,19 @@ const itemVariants = {
 
 
 export default function Dashboard() {
-  const { entries, loading: entriesLoading } = useEntries();
+  const { entries, loading: entriesLoading, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading } = useExpenses();
   const loading = entriesLoading || expensesLoading;
   const { settings } = useSettings();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  const [isHoliday, setIsHoliday] = useState(false);
+  const [weatherCondition, setWeatherCondition] = useState<'normal' | 'hot' | 'rain'>('normal');
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [isWeekend, setIsWeekend] = useState(tomorrow.getDay() === 0 || tomorrow.getDay() === 6);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   
@@ -168,18 +175,26 @@ export default function Dashboard() {
     const avgStick = Math.round(totalStick / recentEntries.length);
     const avgPot = Math.round(totalPot / recentEntries.length);
 
-    // 15% safety buffer, rounded up to nearest 5
-    const suggestStickVal = Math.max(10, Math.ceil((avgStick * 1.15) / 5) * 5);
-    const suggestPotVal = Math.max(10, Math.ceil((avgPot * 1.15) / 5) * 5);
+    let multiplier = 1.0;
+    if (isWeekend) multiplier += 0.20; // 20% increase on weekends
+    if (isHoliday) multiplier += 0.30; // 30% increase on holidays
+    if (weatherCondition === 'hot') multiplier += 0.15; // 15% increase on hot days
+    if (weatherCondition === 'rain') multiplier -= 0.30; // 30% decrease on rainy days
+
+    // Add a 15% safety buffer to the calculated multiplier, then round up to nearest 5
+    const finalMultiplier = multiplier + 0.15;
+    const suggestStickVal = Math.max(10, Math.ceil((avgStick * finalMultiplier) / 5) * 5);
+    const suggestPotVal = Math.max(10, Math.ceil((avgPot * finalMultiplier) / 5) * 5);
 
     return {
       stick: suggestStickVal,
       pot: suggestPotVal,
       avgStick,
       avgPot,
+      multiplier: Math.round(multiplier * 100),
       hasData: true
     };
-  }, [entries]);
+  }, [entries, isWeekend, isHoliday, weatherCondition]);
 
   if (loading) {
     return (
@@ -534,23 +549,86 @@ export default function Dashboard() {
                 Based on recent average sales from the last 5 operational days, we recommend preparing and loading the following quantities for the next shift to minimize stockout risk:
               </p>
 
+              {/* Prediction Modifiers */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setIsWeekend(!isWeekend)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                    isWeekend 
+                      ? 'bg-cyan-500 text-white border-cyan-500 shadow-md shadow-cyan-500/20' 
+                      : isDark ? 'bg-slate-900 text-slate-400 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-400' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-cyan-500/50 hover:text-cyan-600'
+                  }`}
+                >
+                  <Calendar className="w-3 h-3" /> Weekend
+                </button>
+                <button
+                  onClick={() => setIsHoliday(!isHoliday)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                    isHoliday 
+                      ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-500/20' 
+                      : isDark ? 'bg-slate-900 text-slate-400 border-slate-700 hover:border-pink-500/50 hover:text-pink-400' : 'bg-slate-50 text-slate-500 border-slate-200 hover:border-pink-500/50 hover:text-pink-600'
+                  }`}
+                >
+                  <PartyPopper className="w-3 h-3" /> Holiday
+                </button>
+                
+                <div className={`flex rounded-full border overflow-hidden ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                  <button
+                    onClick={() => setWeatherCondition('normal')}
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      weatherCondition === 'normal'
+                        ? 'bg-slate-700 text-white dark:bg-slate-600' 
+                        : isDark ? 'bg-slate-900 text-slate-400 hover:text-white' : 'bg-slate-50 text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    onClick={() => setWeatherCondition('hot')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border-l ${
+                      isDark ? 'border-slate-700' : 'border-slate-200'
+                    } ${
+                      weatherCondition === 'hot'
+                        ? 'bg-amber-500 text-white' 
+                        : isDark ? 'bg-slate-900 text-slate-400 hover:text-amber-400' : 'bg-slate-50 text-slate-500 hover:text-amber-600'
+                    }`}
+                  >
+                    <Sun className="w-3 h-3" /> Hot
+                  </button>
+                  <button
+                    onClick={() => setWeatherCondition('rain')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border-l ${
+                      isDark ? 'border-slate-700' : 'border-slate-200'
+                    } ${
+                      weatherCondition === 'rain'
+                        ? 'bg-blue-500 text-white' 
+                        : isDark ? 'bg-slate-900 text-slate-400 hover:text-blue-400' : 'bg-slate-50 text-slate-500 hover:text-blue-600'
+                    }`}
+                  >
+                    <CloudRain className="w-3 h-3" /> Rain
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center relative overflow-hidden`}>
+                  <div className="absolute -right-4 -top-4 w-16 h-16 bg-cyan-500/5 rounded-full blur-xl"></div>
                   <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Stick Kulfi Suggestion</span>
-                  <span className="text-3xl font-black text-cyan-500 leading-none mt-1">{nextDaySuggestion.stick} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                  <span className="text-3xl font-black text-cyan-500 leading-none mt-1 relative z-10">{nextDaySuggestion.stick} <span className="text-xs font-bold text-slate-400">pcs</span></span>
                   <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgStick} pcs</span>
                 </div>
 
-                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center`}>
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center relative overflow-hidden`}>
+                  <div className="absolute -right-4 -top-4 w-16 h-16 bg-pink-500/5 rounded-full blur-xl"></div>
                   <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Pot Kulfi Suggestion</span>
-                  <span className="text-3xl font-black text-pink-500 leading-none mt-1">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                  <span className="text-3xl font-black text-pink-500 leading-none mt-1 relative z-10">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
                   <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPot} pcs</span>
                 </div>
               </div>
 
               <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 flex gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase">
-                <span className="font-black">💡 Recommendation Note:</span>
-                <span>A 15% safety stock buffer is auto-included and rounded up to the nearest multiple of 5.</span>
+                <span className="font-black whitespace-nowrap">💡 Multiplier:</span>
+                <span>Adjusted to {nextDaySuggestion.multiplier}% of base average due to current conditions (includes 15% safety buffer, rounded up to nearest 5).</span>
               </div>
             </CardContent>
           </Card>

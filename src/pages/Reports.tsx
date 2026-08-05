@@ -11,8 +11,8 @@ import { useTheme } from '../context/ThemeContext';
 import { ExpenseEntry } from '../types';
 export default function Reports({ role = 'owner', onEdit, onEditExpense }: { role?: 'owner' | 'manager', onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
   const isOwner = role === 'owner';
-  const { entries, loading, reload } = useEntries();
-  const { expenses, loading: expensesLoading, reload: reloadExpenses } = useExpenses();
+  const { entries, loading, reload, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
+  const { expenses, loading: expensesLoading, reload: reloadExpenses, loadMore: loadMoreExpenses, hasMore: hasMoreExpenses } = useExpenses();
   const [expenseDeleteConfirmId, setExpenseDeleteConfirmId] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const { theme } = useTheme();
