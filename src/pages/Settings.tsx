@@ -27,6 +27,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
   const [passwordErrorMsg, setPasswordErrorMsg] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
+  useEffect(() => {
+    const mainContainer = document.querySelector('main');
+    if (mainContainer) {
+      mainContainer.scrollTo(0, 0);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth.currentUser || !auth.currentUser.email) return;
@@ -101,27 +110,37 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
   const [inventoryData, setInventoryData] = useState<{
     stickQuantity: number | '';
     potQuantity: number | '';
+    lastUpdatedDate: string;
   }>({
     stickQuantity: '',
     potQuantity: '',
+    lastUpdatedDate: new Date().toISOString().split('T')[0]
   });
 
-  const totalStickSold = entries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-  const totalPotSold = entries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+  const relevantEntries = inventory.lastUpdatedDate
+    ? entries.filter(e => e.date >= inventory.lastUpdatedDate)
+    : entries;
+  const totalStickSold = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+  const totalPotSold = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
   const availableStick = Math.max(0, (inventory.stickQuantity || 0) - totalStickSold);
   const availablePot = Math.max(0, (inventory.potQuantity || 0) - totalPotSold);
 
   const latestEntry = [...entries].sort((a, b) => b.date.localeCompare(a.date))[0];
-  const latestStickLoaded = latestEntry ? (latestEntry.stickLoaded || 0) : 0;
-  const latestStickBalance = latestEntry ? (latestEntry.stickBalance || 0) : 0;
-  const latestPotLoaded = latestEntry ? (latestEntry.potLoaded || 0) : 0;
-  const latestPotBalance = latestEntry ? (latestEntry.potBalance || 0) : 0;
+  const isStickJobOpen = latestEntry && latestEntry.stickBalance === undefined;
+  const isPotJobOpen = latestEntry && latestEntry.potBalance === undefined;
+
+  const currentInJobStick = isStickJobOpen ? (latestEntry.stickLoaded || 0) : 0;
+  const currentInJobPot = isPotJobOpen ? (latestEntry.potLoaded || 0) : 0;
+
+  const currentWarehouseStickBalance = availableStick - currentInJobStick;
+  const currentWarehousePotBalance = availablePot - currentInJobPot;
 
   useEffect(() => {
     if (inventory) {
       setInventoryData({
         stickQuantity: inventory.stickQuantity,
-        potQuantity: inventory.potQuantity
+        potQuantity: inventory.potQuantity,
+        lastUpdatedDate: inventory.lastUpdatedDate || new Date().toISOString().split('T')[0]
       });
     }
   }, [inventory]);
@@ -131,6 +150,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       id: 'global',
       stickQuantity: Number(inventoryData.stickQuantity) || 0,
       potQuantity: Number(inventoryData.potQuantity) || 0,
+      lastUpdatedDate: inventoryData.lastUpdatedDate || new Date().toISOString().split('T')[0]
     };
     await saveInventoryStock(item);
     setIsEditingInventory(false);
@@ -141,6 +161,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
     setInventoryData({
       stickQuantity: inventory.stickQuantity,
       potQuantity: inventory.potQuantity,
+      lastUpdatedDate: new Date().toISOString().split('T')[0] // Always default to today when editing
     });
     setIsEditingInventory(true);
   };
@@ -183,7 +204,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                 </h3>
                 <div className="space-y-2">
                   <Label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Monthly Sales Goal (₹)</Label>
-                  <Input name="monthlyGoal" type="number" value={settingsData.monthlyGoal} onChange={handleSettingsChange} required className="border-emerald-200 dark:border-emerald-900/50 focus-visible:ring-emerald-500" />
+                  <Input name="monthlyGoal" type="text" inputMode="numeric" value={settingsData.monthlyGoal} onChange={handleSettingsChange} required className="border-emerald-200 dark:border-emerald-900/50 focus-visible:ring-emerald-500" />
                 </div>
               </CardContent>
             </Card>
@@ -195,7 +216,12 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       ) : (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-xs font-black uppercase tracking-widest text-pink-600 dark:text-pink-400">Current Stock</h3>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-pink-600 dark:text-pink-400">Current Stock</h3>
+              {!isEditingInventory && inventory.lastUpdatedDate && (
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Stock Date: {inventory.lastUpdatedDate}</p>
+              )}
+            </div>
             {!isEditingInventory && (
               <Button onClick={startInventoryEdit} className="bg-pink-500 hover:bg-pink-600 text-white font-bold rounded-xl h-8 px-3 text-xs">
                 <Edit2 className="w-3 h-3 mr-2" /> EDIT
@@ -205,11 +231,21 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
           {isEditingInventory ? (
             <Card>
               <CardContent className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stock Date</Label>
+                    <Input 
+                      type="date"
+                      value={inventoryData.lastUpdatedDate}
+                      onChange={e => setInventoryData({...inventoryData, lastUpdatedDate: e.target.value})}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+
                   <div className="space-y-2">
                     <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stick Quantity</Label>
                     <Input 
-                      type="number"
+                      type="text" inputMode="numeric"
                       value={inventoryData.stickQuantity}
                       onChange={e => setInventoryData({...inventoryData, stickQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                     />
@@ -217,10 +253,12 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                   <div className="space-y-2">
                     <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pot Quantity</Label>
                     <Input 
-                      type="number"
+                      type="text" inputMode="numeric"
                       value={inventoryData.potQuantity}
                       onChange={e => setInventoryData({...inventoryData, potQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                     />
+                  </div>
+                
                   </div>
                 </div>
 
@@ -261,11 +299,11 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <div className="bg-slate-100/85 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-850/80">
                       <span className="text-[9px] font-black text-cyan-800 dark:text-cyan-400 uppercase tracking-widest block mb-1">In Job (Loaded)</span>
-                      <span className="text-lg font-black text-slate-950 dark:text-white">{latestStickLoaded}</span>
+                      <span className="text-lg font-black text-slate-950 dark:text-white">{currentInJobStick}</span>
                     </div>
                     <div className="bg-slate-100/85 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-850/80">
                       <span className="text-[9px] font-black text-purple-800 dark:text-purple-400 uppercase tracking-widest block mb-1">Inv Balance</span>
-                      <span className="text-lg font-black text-slate-950 dark:text-white">{latestStickBalance}</span>
+                      <span className="text-lg font-black text-slate-950 dark:text-white">{currentWarehouseStickBalance}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -292,11 +330,11 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <div className="bg-slate-100/85 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-850/80">
                       <span className="text-[9px] font-black text-pink-855 dark:text-pink-400 uppercase tracking-widest block mb-1">In Job (Loaded)</span>
-                      <span className="text-lg font-black text-slate-950 dark:text-white">{latestPotLoaded}</span>
+                      <span className="text-lg font-black text-slate-950 dark:text-white">{currentInJobPot}</span>
                     </div>
                     <div className="bg-slate-100/85 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-850/80">
                       <span className="text-[9px] font-black text-purple-800 dark:text-purple-400 uppercase tracking-widest block mb-1">Inv Balance</span>
-                      <span className="text-lg font-black text-slate-950 dark:text-white">{latestPotBalance}</span>
+                      <span className="text-lg font-black text-slate-950 dark:text-white">{currentWarehousePotBalance}</span>
                     </div>
                   </div>
                 </CardContent>

@@ -120,7 +120,8 @@ export async function saveSettings(settings: Settings): Promise<void> {
 const DEFAULT_INVENTORY: InventoryStock = {
   id: 'global',
   stickQuantity: 0,
-  potQuantity: 0
+  potQuantity: 0,
+  lastUpdatedDate: new Date().toISOString().split('T')[0]
 };
 
 export async function getInventoryStock(): Promise<InventoryStock> {

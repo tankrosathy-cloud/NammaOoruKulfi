@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Logo } from './components/Logo';
 import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
@@ -13,7 +13,6 @@ import { StoreProvider } from './store';
 import { signOut } from 'firebase/auth';
 import { useTheme } from './context/ThemeContext';
 import { motion } from 'motion/react';
-import QuickExpenseModal from './components/QuickExpenseModal';
 import SyncStatus from './components/SyncStatus';
 
 function AppShellContent() {
@@ -25,10 +24,14 @@ function AppShellContent() {
   const role = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username) ? 'owner' : 'manager';
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'planner' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
+
+  useEffect(() => {
+    const mainContainer = document.querySelector('main');
+    if (mainContainer) mainContainer.scrollTo(0, 0);
+  }, [activeTab]);
   const [editDate, setEditDate] = useState<string | undefined>(undefined);
   const [editExpense, setEditExpense] = useState<any>(undefined);
-  const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
-
+  
   const handleEditEntry = (date: string) => {
     setEditDate(date);
     setActiveTab('add');
@@ -44,6 +47,8 @@ function AppShellContent() {
       setEditDate(undefined);
     }
     setActiveTab(tab);
+    const mainContainer = document.querySelector('main');
+    if (mainContainer) mainContainer.scrollTo(0, 0);
   };
 
   const handleLogout = async () => {
@@ -115,53 +120,13 @@ function AppShellContent() {
       
       <main className="flex-1 overflow-y-auto pb-24">
         {activeTab === 'dashboard' && role === 'owner' && <Dashboard />}
-        {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
-        {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
+        {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
+        {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={role} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
         {activeTab === 'planner' && <Planner />}
         {activeTab === 'settings' && <SettingsPage role={role} />}
         {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
       </main>
-
-      {/* Floating Action Button for Quick Job - All users */}
-      {activeTab !== 'add' && (
-        <motion.button
-          onClick={() => navigateTab('add')}
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className={`fixed ${activeTab !== 'expense' && role === 'owner' ? 'bottom-40' : 'bottom-24'} right-5 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white flex items-center justify-center shadow-[0_8px_25px_rgba(6,182,212,0.35)] dark:shadow-[0_8px_30px_rgba(6,182,212,0.5)] transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500/50`}
-          title="Quick Job Entry"
-        >
-          <PlusCircle className="w-6 h-6 animate-pulse" />
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-pink-500 text-[9px] font-black flex items-center justify-center border-2 border-white dark:border-slate-900">⚡</span>
-        </motion.button>
-      )}
-
-      {/* Floating Action Button for Quick Expense - Owner only */}
-      {activeTab !== 'expense' && role === 'owner' && (
-        <motion.button
-          onClick={() => setIsQuickExpenseOpen(true)}
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white flex items-center justify-center shadow-[0_8px_25px_rgba(239,68,68,0.35)] dark:shadow-[0_8px_30px_rgba(239,68,68,0.5)] transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-pink-500/50"
-          title="Quick Expense Entry"
-        >
-          <Coins className="w-6 h-6 animate-pulse" />
-          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-cyan-500 text-[9px] font-black flex items-center justify-center border-2 border-white dark:border-slate-900">⚡</span>
-        </motion.button>
-      )}
-
-      {/* Quick Expense Modal */}
-      <QuickExpenseModal
-        isOpen={isQuickExpenseOpen}
-        onClose={() => setIsQuickExpenseOpen(false)}
-        onSave={() => {}}
-        isDark={isDark}
-      />
 
       <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-20 transition-all duration-300 border-t ${
         isDark 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry } from '../types';
-import { saveEntry, useSettings, getEntries, useEntries, useInventory } from '../store';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory } from '../store';
 import { format } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -9,7 +9,7 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Sparkles } from 'lucide-react';
 
-export default function AddEntry({ onSave, initialDate }: { onSave: () => void, initialDate?: string, key?: string }) {
+export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: () => void, onCancel?: () => void, initialDate?: string, key?: string }) {
   const { settings } = useSettings();
   const { entries } = useEntries();
   const { inventory } = useInventory();
@@ -36,18 +36,18 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
       setIsEditing(true);
       setEntryId(existingEntry.id);
       setFormData({
-        stickLoaded: (existingEntry.stickLoaded || '').toString(),
-        stickBalance: (existingEntry.stickBalance || '').toString(),
-        potLoaded: (existingEntry.potLoaded || '').toString(),
-        potBalance: (existingEntry.potBalance || '').toString(),
-        cashBagLoaded: (existingEntry.cashBagLoaded || '').toString(),
-        cashBagTotal: (existingEntry.cashBagTotal || '').toString(),
-        phonePe: (existingEntry.phonePe || '').toString(),
-        discount: (existingEntry.discount || '').toString(),
-        additionalExpenses: (existingEntry.additionalExpenses || '').toString(),
-        expenseDetails: existingEntry.expenseDetails || '',
-        bonus: (existingEntry.bonus || '').toString(),
-        notes: existingEntry.notes || ''
+        stickLoaded: (existingEntry.stickLoaded ?? '').toString(),
+        stickBalance: (existingEntry.stickBalance ?? '').toString(),
+        potLoaded: (existingEntry.potLoaded ?? '').toString(),
+        potBalance: (existingEntry.potBalance ?? '').toString(),
+        cashBagLoaded: (existingEntry.cashBagLoaded ?? '').toString(),
+        cashBagTotal: (existingEntry.cashBagTotal ?? '').toString(),
+        phonePe: (existingEntry.phonePe ?? '').toString(),
+        discount: (existingEntry.discount ?? '').toString(),
+        additionalExpenses: (existingEntry.additionalExpenses ?? '').toString(),
+        expenseDetails: existingEntry.expenseDetails ?? '',
+        bonus: (existingEntry.bonus ?? '').toString(),
+        notes: existingEntry.notes ?? ''
       });
     } else {
       setIsEditing(false);
@@ -76,8 +76,11 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
   }, [date, entries]);
 
   // Find previous balances (the entry with the largest date that is strictly less than current date)
-  const totalStickSold = entries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-  const totalPotSold = entries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+  const relevantEntries = inventory.lastUpdatedDate
+    ? entries.filter(e => e.date >= inventory.lastUpdatedDate)
+    : entries;
+  const totalStickSold = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+  const totalPotSold = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
   const availableStick = Math.max(0, (inventory.stickQuantity || 0) - totalStickSold);
   const availablePot = Math.max(0, (inventory.potQuantity || 0) - totalPotSold);
 
@@ -146,6 +149,9 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  
+  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -154,10 +160,10 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
       id: entryId,
       date,
       stickLoaded: parseInt(formData.stickLoaded) || 0,
-      stickBalance: parseInt(formData.stickBalance) || 0,
+      ...(formData.stickBalance !== '' ? { stickBalance: parseInt(formData.stickBalance) } : {}),
       stickSold,
       potLoaded: parseInt(formData.potLoaded) || 0,
-      potBalance: parseInt(formData.potBalance) || 0,
+      ...(formData.potBalance !== '' ? { potBalance: parseInt(formData.potBalance) } : {}),
       potSold,
       cashBagLoaded: parseInt(formData.cashBagLoaded) || 0,
       cashBagTotal: parseInt(formData.cashBagTotal) || 0,
@@ -233,22 +239,22 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availableStick})</span></Label>
-                      <Input name="stickLoaded" type="number" value={formData.stickLoaded} onChange={handleChange} />
+                      <Input name="stickLoaded" type="text" inputMode="numeric" value={formData.stickLoaded} onChange={handleChange} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Balance</Label>
-                      <Input name="stickBalance" type="number" value={formData.stickBalance} onChange={handleChange} />
+                      <Input name="stickBalance" type="text" inputMode="numeric" value={formData.stickBalance} onChange={handleChange} />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availablePot})</span></Label>
-                      <Input name="potLoaded" type="number" value={formData.potLoaded} onChange={handleChange} />
+                      <Input name="potLoaded" type="text" inputMode="numeric" value={formData.potLoaded} onChange={handleChange} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Balance</Label>
-                      <Input name="potBalance" type="number" value={formData.potBalance} onChange={handleChange} />
+                      <Input name="potBalance" type="text" inputMode="numeric" value={formData.potBalance} onChange={handleChange} />
                     </div>
                   </div>
                 </div>
@@ -259,23 +265,23 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Cash Bag Loaded <span className="text-cyan-700 dark:text-cyan-400 font-black">(START)</span></Label>
-                    <Input name="cashBagLoaded" type="number" value={formData.cashBagLoaded} onChange={handleChange} />
+                    <Input name="cashBagLoaded" type="text" inputMode="numeric" value={formData.cashBagLoaded} onChange={handleChange} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Cash Bag Total <span className="text-pink-700 dark:text-pink-400 font-black">(END)</span></Label>
-                    <Input name="cashBagTotal" type="number" value={formData.cashBagTotal} onChange={handleChange} />
+                    <Input name="cashBagTotal" type="text" inputMode="numeric" value={formData.cashBagTotal} onChange={handleChange} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">PhonePe Amount</Label>
-                    <Input name="phonePe" type="number" value={formData.phonePe} onChange={handleChange} />
+                    <Input name="phonePe" type="text" inputMode="numeric" value={formData.phonePe} onChange={handleChange} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Offer/Discount</Label>
-                    <Input name="discount" type="number" value={formData.discount} onChange={handleChange} />
+                    <Input name="discount" type="text" inputMode="numeric" value={formData.discount} onChange={handleChange} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Bonus</Label>
-                    <Input name="bonus" type="number" value={formData.bonus} onChange={handleChange} />
+                    <Input name="bonus" type="text" inputMode="numeric" value={formData.bonus} onChange={handleChange} />
                   </div>
                 </div>
               </div>
@@ -314,9 +320,17 @@ export default function AddEntry({ onSave, initialDate }: { onSave: () => void, 
           </CardContent>
         </Card>
 
-        <Button type="submit" className="w-full h-14 text-sm" size="lg" disabled={loading}>
-          {loading ? 'SAVING...' : (isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY')}
-        </Button>
+        <div className="flex gap-4">
+          {onCancel && (
+            <Button type="button" variant="outline" className="w-1/3 h-14 text-sm border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
+              CANCEL
+            </Button>
+          )}
+          <Button type="submit" disabled={loading} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer">
+              {loading ? 'SAVING...' : isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY'}
+            </Button>
+            
+        </div>
       </form>
     </div>
   );

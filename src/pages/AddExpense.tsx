@@ -6,7 +6,7 @@ import { Button } from '../components/ui/button';
 import { saveExpense } from '../store';
 import { ExpenseEntry } from '../types';
 
-export default function AddExpense({ onSave, initialExpense }: { onSave: () => void, initialExpense?: ExpenseEntry }) {
+export default function AddExpense({ onSave, onCancel, initialExpense }: { onSave: () => void, onCancel?: () => void, initialExpense?: ExpenseEntry }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     date: initialExpense?.date || new Date().toLocaleDateString('en-CA'),
@@ -106,9 +106,16 @@ export default function AddExpense({ onSave, initialExpense }: { onSave: () => v
           </CardContent>
         </Card>
         
-        <Button type="submit" className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-bold" disabled={loading}>
-          {loading ? 'SAVING...' : 'SAVE EXPENSE'}
-        </Button>
+        <div className="flex gap-4">
+          {onCancel && (
+            <Button type="button" variant="outline" className="w-1/3 h-14 text-sm border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
+              CANCEL
+            </Button>
+          )}
+          <Button type="submit" className="flex-1 h-14 bg-red-600 hover:bg-red-700 text-white font-bold" disabled={loading}>
+            {loading ? 'SAVING...' : 'SAVE EXPENSE'}
+          </Button>
+        </div>
       </form>
     </div>
   );

@@ -4,12 +4,12 @@ export interface DailyEntry {
 
   // Stick Kulfi
   stickLoaded: number;
-  stickBalance: number;
+  stickBalance?: number;
   stickSold: number;
 
   // Pot Kulfi
   potLoaded: number;
-  potBalance: number;
+  potBalance?: number;
   potSold: number;
 
   // Financials
@@ -40,6 +40,7 @@ export interface InventoryStock {
   id: string;
   stickQuantity: number;
   potQuantity: number;
+  lastUpdatedDate?: string;
 }
 
 export interface ExpenseEntry {

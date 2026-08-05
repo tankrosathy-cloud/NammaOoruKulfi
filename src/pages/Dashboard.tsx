@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useEntries, useSettings, useExpenses } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
-import { TrendingUp, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
+import { useWeather } from '../lib/useWeather';
+import { calculatePrediction } from '../lib/prediction';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from 'motion/react';
@@ -32,6 +34,7 @@ const itemVariants = {
 
 
 export default function Dashboard() {
+  const [showNotifications, setShowNotifications] = useState(false);
   const { entries, loading: entriesLoading, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading } = useExpenses();
   const loading = entriesLoading || expensesLoading;
@@ -39,12 +42,24 @@ export default function Dashboard() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  const [isHoliday, setIsHoliday] = useState(false);
-  const [weatherCondition, setWeatherCondition] = useState<'normal' | 'hot' | 'rain'>('normal');
-
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const [isWeekend, setIsWeekend] = useState(tomorrow.getDay() === 0 || tomorrow.getDay() === 6);
+  const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+  const defaultIsWeekend = tomorrow.getDay() === 0 || tomorrow.getDay() === 6;
+  
+  const { getWeatherForDate } = useWeather();
+  const autoWeather = getWeatherForDate(tomorrowStr);
+  
+  const [isWeekend, setIsWeekend] = useState(defaultIsWeekend);
+  const [isHoliday, setIsHoliday] = useState(false);
+  const [weatherCondition, setWeatherCondition] = useState<'normal' | 'hot' | 'rain'>('normal');
+  const [userOverrodeWeather, setUserOverrodeWeather] = useState(false);
+
+  useEffect(() => {
+    if (!userOverrodeWeather && autoWeather) {
+      setWeatherCondition(autoWeather === 'rainy' ? 'rain' : autoWeather);
+    }
+  }, [autoWeather, userOverrodeWeather]);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   
@@ -63,6 +78,7 @@ export default function Dashboard() {
     let monthlyRevenue = 0;
     let lifetimeRevenue = 0;
     let monthlyExpenses = 0;
+    let monthlyShortage = 0;
 
     entries.forEach(e => {
       const revenue = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
@@ -80,6 +96,7 @@ export default function Dashboard() {
         if (isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd })) {
           monthlyRevenue += revenue;
           monthlyExpenses += expenses;
+          monthlyShortage += (e.shortage || 0);
         }
         
         if (isWithinInterval(date, { start: currentWeekStart, end: currentWeekEnd })) {
@@ -156,6 +173,7 @@ export default function Dashboard() {
       lifetimeRevenue,
       monthlyExpenses,
       monthlyNet: monthlyRevenue - monthlyExpenses,
+      monthlyShortage,
       chartData,
       monthlySalesTrend,
       expenseDistribution
@@ -163,38 +181,9 @@ export default function Dashboard() {
   }, [entries, expenses]);
 
   const nextDaySuggestion = useMemo(() => {
-    if (!entries || entries.length === 0) {
-      return { stick: 40, pot: 25, avgStick: 35, avgPot: 20, hasData: false };
-    }
-    const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
-    const recentEntries = sorted.slice(0, 5);
-
-    const totalStick = recentEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-    const totalPot = recentEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
-
-    const avgStick = Math.round(totalStick / recentEntries.length);
-    const avgPot = Math.round(totalPot / recentEntries.length);
-
-    let multiplier = 1.0;
-    if (isWeekend) multiplier += 0.20; // 20% increase on weekends
-    if (isHoliday) multiplier += 0.30; // 30% increase on holidays
-    if (weatherCondition === 'hot') multiplier += 0.15; // 15% increase on hot days
-    if (weatherCondition === 'rain') multiplier -= 0.30; // 30% decrease on rainy days
-
-    // Add a 15% safety buffer to the calculated multiplier, then round up to nearest 5
-    const finalMultiplier = multiplier + 0.15;
-    const suggestStickVal = Math.max(10, Math.ceil((avgStick * finalMultiplier) / 5) * 5);
-    const suggestPotVal = Math.max(10, Math.ceil((avgPot * finalMultiplier) / 5) * 5);
-
-    return {
-      stick: suggestStickVal,
-      pot: suggestPotVal,
-      avgStick,
-      avgPot,
-      multiplier: Math.round(multiplier * 100),
-      hasData: true
-    };
-  }, [entries, isWeekend, isHoliday, weatherCondition]);
+    const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, tomorrowStr);
+    return { ...result, multiplier: Math.round(result.multiplier * 100) };
+  }, [entries, isWeekend, isHoliday, weatherCondition, tomorrowStr]);
 
   if (loading) {
     return (
@@ -219,11 +208,54 @@ export default function Dashboard() {
       animate="show" 
       className="p-6 space-y-8 pb-32"
     >
-      <motion.div variants={itemVariants}>
-        <h2 className={`text-3xl font-black tracking-tighter uppercase mb-1 ${
-          isDark ? 'text-white' : 'text-slate-900'
-        }`}>Overview</h2>
-        <p className={`${labelColor} text-[10px] font-bold uppercase tracking-widest`}>Monthly performance & current inventory</p>
+      <motion.div variants={itemVariants} className="flex justify-between items-start relative">
+        <div>
+          <h2 className={`text-3xl font-black tracking-tighter uppercase mb-1 ${
+            isDark ? 'text-white' : 'text-slate-900'
+          }`}>Overview</h2>
+          <p className={`${labelColor} text-[10px] font-bold uppercase tracking-widest`}>Monthly performance & current inventory</p>
+        </div>
+        
+        <button 
+          onClick={() => setShowNotifications(!showNotifications)}
+          className="relative p-2.5 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        >
+          <Bell className="w-5 h-5" />
+          <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-800 animate-pulse"></span>
+        </button>
+
+        {showNotifications && (
+          <div className={`absolute top-14 right-0 w-72 z-50 rounded-2xl shadow-xl border p-4 ${
+            isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">Notifications</h3>
+              <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-blue-50 border-blue-100'}`}>
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className={`text-[11px] font-bold ${isDark ? 'text-blue-400' : 'text-blue-700'}`}>Stock Update Reminder</p>
+                    <p className={`text-[10px] mt-0.5 leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Don't forget to verify physical stock against dashboard balance today.</p>
+                  </div>
+                </div>
+              </div>
+              <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className={`text-[11px] font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>System Message</p>
+                    <p className={`text-[10px] mt-0.5 leading-snug ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Dashboard data synced successfully.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -266,7 +298,7 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      <motion.div variants={itemVariants} className="grid grid-cols-1 gap-4">
+      <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
         <Card className={cardBg}>
           <CardHeader className="p-5 pb-2">
             <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
@@ -276,6 +308,17 @@ export default function Dashboard() {
           <CardContent className="p-5 pt-0">
             <div className="text-3xl font-black leading-none text-pink-600 dark:text-pink-400">{formatCurrency(stats.monthlyExpenses)}</div>
             <p className="text-[10px] font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider mt-2">This month</p>
+          </CardContent>
+        </Card>
+        <Card className={cardBg}>
+          <CardHeader className="p-5 pb-2">
+            <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
+              <TrendingDown className="w-4 h-4 text-orange-500 dark:text-orange-400" /> Shortage
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            <div className="text-3xl font-black leading-none text-orange-500 dark:text-orange-400">{formatCurrency(stats.monthlyShortage)}</div>
+            <p className="text-[10px] font-extrabold text-orange-500 dark:text-orange-400 uppercase tracking-wider mt-2">This month</p>
           </CardContent>
         </Card>
       </motion.div>
@@ -574,7 +617,7 @@ export default function Dashboard() {
                 
                 <div className={`flex rounded-full border overflow-hidden ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                   <button
-                    onClick={() => setWeatherCondition('normal')}
+                    onClick={() => { setWeatherCondition('normal'); setUserOverrodeWeather(true); }}
                     className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
                       weatherCondition === 'normal'
                         ? 'bg-slate-700 text-white dark:bg-slate-600' 
@@ -584,7 +627,7 @@ export default function Dashboard() {
                     Normal
                   </button>
                   <button
-                    onClick={() => setWeatherCondition('hot')}
+                    onClick={() => { setWeatherCondition('hot'); setUserOverrodeWeather(true); }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border-l ${
                       isDark ? 'border-slate-700' : 'border-slate-200'
                     } ${
@@ -596,7 +639,7 @@ export default function Dashboard() {
                     <Sun className="w-3 h-3" /> Hot
                   </button>
                   <button
-                    onClick={() => setWeatherCondition('rain')}
+                    onClick={() => { setWeatherCondition('rain'); setUserOverrodeWeather(true); }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all border-l ${
                       isDark ? 'border-slate-700' : 'border-slate-200'
                     } ${
