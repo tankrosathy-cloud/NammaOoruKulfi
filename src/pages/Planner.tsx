@@ -146,16 +146,16 @@ export default function Planner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Input Panel */}
-        <div className="space-y-6 lg:col-span-1">
-          <Card className={isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}>
-            <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60">
-              <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
-                <Calendar className="w-4.5 h-4.5" /> 1. Select Parameters
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5 space-y-5 pt-4">
+      <div className="space-y-6">
+        {/* Input Panel */}
+        <Card className={isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}>
+          <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60">
+            <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
+              <Calendar className="w-4.5 h-4.5" /> 1. Select Parameters
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-5 space-y-5 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Date Selection */}
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
@@ -257,7 +257,7 @@ export default function Planner() {
                 >
                   <div className="flex items-center gap-2">
                     <PartyPopper className="w-4 h-4 mb-0.5" />
-                    <span>Public Holiday / Festival</span>
+                    <span>Holiday / Festival</span>
                   </div>
                   {isHoliday ? (
                     <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded text-white">+30%</span>
@@ -266,13 +266,12 @@ export default function Planner() {
                   )}
                 </button>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Center/Right Column: Analytical Summary */}
-        <div className="space-y-6 lg:col-span-2">
-          <Card className={`overflow-hidden border transition-all duration-300 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800' : 'bg-white text-slate-800 border-slate-100 shadow-lg shadow-slate-100'}`}>
+        {/* Analytical Summary */}
+        <Card className={`overflow-hidden border transition-all duration-300 ${isDark ? 'bg-gradient-to-br from-slate-900 to-slate-950 text-white border-slate-800' : 'bg-white text-slate-800 border-slate-100 shadow-lg shadow-slate-100'}`}>
             <CardHeader className="p-5 pb-4 border-b border-slate-100 dark:border-slate-800/60 flex flex-row justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
               <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-2">
                 <Package className="w-5 h-5 text-indigo-500" /> Preparation Targets
@@ -455,7 +454,6 @@ export default function Planner() {
               </div>
             </CardContent>
           </Card>
-        </div>
       </div>
     </div>
   );
