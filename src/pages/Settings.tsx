@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettings, saveSettings, useInventory, saveInventoryStock, useEntries } from '../store';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Package, Edit2, KeyRound, LogOut } from 'lucide-react';
+import { Package, Edit2, KeyRound, LogOut, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { InventoryStock } from '../types';
+import Planner from './Planner';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
-  const [activeTab, setActiveTab] = useState<'settings' | 'inventory'>(role === 'owner' ? 'settings' : 'inventory');
+  const [activeTab, setActiveTab] = useState<'settings' | 'inventory' | 'planner'>(role === 'owner' ? 'settings' : 'inventory');
 
   // Settings State
   const { settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
@@ -107,14 +108,21 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
   const { inventory, loading: inventoryLoading, reload: reloadInventory } = useInventory();
   const { entries } = useEntries();
   const [isEditingInventory, setIsEditingInventory] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [parsedInvoice, setParsedInvoice] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [inventoryData, setInventoryData] = useState<{
     stickQuantity: number | '';
     potQuantity: number | '';
     lastUpdatedDate: string;
+    stickFlavours: { name: string; quantity: number }[];
+    potFlavours: { name: string; quantity: number }[];
   }>({
     stickQuantity: '',
     potQuantity: '',
-    lastUpdatedDate: new Date().toISOString().split('T')[0]
+    lastUpdatedDate: new Date().toISOString().split('T')[0],
+    stickFlavours: [],
+    potFlavours: []
   });
 
   const relevantEntries = inventory.lastUpdatedDate
@@ -140,7 +148,9 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       setInventoryData({
         stickQuantity: inventory.stickQuantity,
         potQuantity: inventory.potQuantity,
-        lastUpdatedDate: inventory.lastUpdatedDate || new Date().toISOString().split('T')[0]
+        lastUpdatedDate: inventory.lastUpdatedDate || new Date().toISOString().split('T')[0],
+        stickFlavours: inventory.stickFlavours || [],
+        potFlavours: inventory.potFlavours || []
       });
     }
   }, [inventory]);
@@ -150,18 +160,93 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       id: 'global',
       stickQuantity: Number(inventoryData.stickQuantity) || 0,
       potQuantity: Number(inventoryData.potQuantity) || 0,
-      lastUpdatedDate: inventoryData.lastUpdatedDate || new Date().toISOString().split('T')[0]
+      lastUpdatedDate: inventoryData.lastUpdatedDate || new Date().toISOString().split('T')[0],
+      stickFlavours: inventoryData.stickFlavours,
+      potFlavours: inventoryData.potFlavours
     };
     await saveInventoryStock(item);
     setIsEditingInventory(false);
     reloadInventory();
   };
 
+  
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('invoice', file);
+
+    try {
+      const res = await fetch('/api/upload-invoice', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to parse invoice');
+      }
+
+      const data = await res.json();
+      setParsedInvoice(data);
+    } catch (err: any) {
+      alert(err.message || 'Error processing invoice');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const confirmInvoice = () => {
+    if (!parsedInvoice) return;
+
+    // We add quantities to existing matching flavours, or add new ones
+    // We update stickQuantity and potQuantity totals as well
+    const existingSticks = [...inventoryData.stickFlavours];
+    let addedSticksTotal = 0;
+
+    parsedInvoice.stickFlavours.forEach((f: any) => {
+      addedSticksTotal += f.quantity;
+      const existing = existingSticks.find(ef => ef.name.toLowerCase() === f.name.toLowerCase());
+      if (existing) {
+        existing.quantity += f.quantity;
+      } else {
+        existingSticks.push({ name: f.name, quantity: f.quantity });
+      }
+    });
+
+    const existingPots = [...inventoryData.potFlavours];
+    let addedPotsTotal = 0;
+
+    parsedInvoice.potFlavours.forEach((f: any) => {
+      addedPotsTotal += f.quantity;
+      const existing = existingPots.find(ef => ef.name.toLowerCase() === f.name.toLowerCase());
+      if (existing) {
+        existing.quantity += f.quantity;
+      } else {
+        existingPots.push({ name: f.name, quantity: f.quantity });
+      }
+    });
+
+    setInventoryData({
+      ...inventoryData,
+      lastUpdatedDate: parsedInvoice.date || inventoryData.lastUpdatedDate,
+      stickQuantity: Number(inventoryData.stickQuantity || 0) + addedSticksTotal,
+      potQuantity: Number(inventoryData.potQuantity || 0) + addedPotsTotal,
+      stickFlavours: existingSticks,
+      potFlavours: existingPots,
+    });
+    setParsedInvoice(null);
+  };
+
   const startInventoryEdit = () => {
     setInventoryData({
       stickQuantity: inventory.stickQuantity,
       potQuantity: inventory.potQuantity,
-      lastUpdatedDate: new Date().toISOString().split('T')[0] // Always default to today when editing
+      lastUpdatedDate: new Date().toISOString().split('T')[0], // Always default to today when editing
+      stickFlavours: inventory.stickFlavours || [],
+      potFlavours: inventory.potFlavours || []
     });
     setIsEditingInventory(true);
   };
@@ -171,10 +256,12 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
 
   return (
     <div className="p-6 space-y-6 pb-32">
-      <div>
-        <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">{role === 'owner' ? 'Admin' : 'Inventory'}</h2>
-        <p className="text-slate-750 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">{role === 'owner' ? 'Manage App & Stock' : 'Global Stock Levels'}</p>
-      </div>
+      {activeTab !== 'planner' && (
+        <div>
+          <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">{role === 'owner' ? 'Admin' : 'Inventory'}</h2>
+          <p className="text-slate-750 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">{role === 'owner' ? 'Manage App & Stock' : 'Global Stock Levels'}</p>
+        </div>
+      )}
 
       {role === 'owner' && (
         <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800">
@@ -190,10 +277,16 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
           >
             Inventory
           </button>
+          <button
+            onClick={() => setActiveTab('planner')}
+            className={`flex-1 h-10 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${activeTab === 'planner' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+          >
+            Planner
+          </button>
         </div>
       )}
 
-      {activeTab === 'settings' && role === 'owner' ? (
+      {activeTab === 'settings' && role === 'owner' && (
         <div className="space-y-6">
           <form onSubmit={handleSettingsSubmit} className="space-y-6">
             <Card>
@@ -213,7 +306,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
             </Button>
           </form>
         </div>
-      ) : (
+      )}
+      {activeTab === 'inventory' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <div>
@@ -233,7 +327,14 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
               <CardContent className="p-6 space-y-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stock Date</Label>
+                    <div className="flex justify-between items-center mb-1">
+                      <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stock Date</Label>
+                      <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                      <Button type="button" variant="outline" size="sm" className="h-6 text-[10px] text-cyan-600 border-cyan-200 bg-cyan-50" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                        {isUploading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Upload className="w-3 h-3 mr-1" />}
+                        {isUploading ? 'UPLOADING...' : 'UPLOAD INVOICE'}
+                      </Button>
+                    </div>
                     <Input 
                       type="date"
                       value={inventoryData.lastUpdatedDate}
@@ -258,8 +359,80 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                       onChange={e => setInventoryData({...inventoryData, potQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                     />
                   </div>
-                
+                  
                   </div>
+                  
+                  {/* Flavour configuration */}
+                  <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">Stick Flavours (Max 15)</Label>
+                      <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-cyan-600" onClick={() => {
+                        if (inventoryData.stickFlavours.length < 15) {
+                          setInventoryData({
+                            ...inventoryData, 
+                            stickFlavours: [...inventoryData.stickFlavours, { name: '', quantity: 0 }]
+                          });
+                        }
+                      }}>+ ADD</Button>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {inventoryData.stickFlavours.map((f, i) => (
+                        <div key={'stick-'+i} className="flex gap-2 items-center">
+                          <Input className="h-8 text-xs flex-1" placeholder="Flavour name" value={f.name} onChange={e => {
+                            const newF = [...inventoryData.stickFlavours];
+                            newF[i].name = e.target.value;
+                            setInventoryData({...inventoryData, stickFlavours: newF});
+                          }} />
+                          <Input className="h-8 text-xs w-20" type="number" placeholder="Qty" value={f.quantity} onChange={e => {
+                            const newF = [...inventoryData.stickFlavours];
+                            newF[i].quantity = Number(e.target.value) || 0;
+                            setInventoryData({...inventoryData, stickFlavours: newF});
+                          }} />
+                          <button type="button" className="text-red-500 w-6 flex justify-center" onClick={() => {
+                            const newF = inventoryData.stickFlavours.filter((_, idx) => idx !== i);
+                            setInventoryData({...inventoryData, stickFlavours: newF});
+                          }}>✕</button>
+                        </div>
+                      ))}
+                      {inventoryData.stickFlavours.length === 0 && <p className="text-[10px] text-slate-400 italic">No flavours added</p>}
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest">Pot Flavours (Max 4)</Label>
+                      <Button type="button" variant="ghost" size="sm" className="h-6 text-[10px] text-purple-600" onClick={() => {
+                        if (inventoryData.potFlavours.length < 4) {
+                          setInventoryData({
+                            ...inventoryData, 
+                            potFlavours: [...inventoryData.potFlavours, { name: '', quantity: 0 }]
+                          });
+                        }
+                      }}>+ ADD</Button>
+                    </div>
+                    <div className="space-y-2">
+                      {inventoryData.potFlavours.map((f, i) => (
+                        <div key={'pot-'+i} className="flex gap-2 items-center">
+                          <Input className="h-8 text-xs flex-1" placeholder="Flavour name" value={f.name} onChange={e => {
+                            const newF = [...inventoryData.potFlavours];
+                            newF[i].name = e.target.value;
+                            setInventoryData({...inventoryData, potFlavours: newF});
+                          }} />
+                          <Input className="h-8 text-xs w-20" type="number" placeholder="Qty" value={f.quantity} onChange={e => {
+                            const newF = [...inventoryData.potFlavours];
+                            newF[i].quantity = Number(e.target.value) || 0;
+                            setInventoryData({...inventoryData, potFlavours: newF});
+                          }} />
+                          <button type="button" className="text-red-500 w-6 flex justify-center" onClick={() => {
+                            const newF = inventoryData.potFlavours.filter((_, idx) => idx !== i);
+                            setInventoryData({...inventoryData, potFlavours: newF});
+                          }}>✕</button>
+                        </div>
+                      ))}
+                      {inventoryData.potFlavours.length === 0 && <p className="text-[10px] text-slate-400 italic">No flavours added</p>}
+                    </div>
+                  </div>
+
                 </div>
 
                 <div className="flex gap-3 pt-2">
@@ -306,6 +479,20 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                       <span className="text-lg font-black text-slate-950 dark:text-white">{currentWarehouseStickBalance}</span>
                     </div>
                   </div>
+                  
+                  {inventory.stickFlavours && inventory.stickFlavours.length > 0 && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <h5 className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest mb-2">Flavours</h5>
+                      <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
+                        {inventory.stickFlavours.map((f, i) => (
+                          <div key={i} className="flex justify-between items-center text-xs p-1.5 bg-slate-50 dark:bg-slate-900 rounded-md">
+                            <span className="truncate mr-2 dark:text-slate-300">{f.name || 'Unnamed'}</span>
+                            <span className="font-bold dark:text-white">{f.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -337,6 +524,20 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                       <span className="text-lg font-black text-slate-950 dark:text-white">{currentWarehousePotBalance}</span>
                     </div>
                   </div>
+                  
+                  {inventory.potFlavours && inventory.potFlavours.length > 0 && (
+                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                      <h5 className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest mb-2">Flavours</h5>
+                      <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto pr-1">
+                        {inventory.potFlavours.map((f, i) => (
+                          <div key={i} className="flex justify-between items-center text-xs p-1.5 bg-slate-50 dark:bg-slate-900 rounded-md">
+                            <span className="truncate mr-2 dark:text-slate-300">{f.name || 'Unnamed'}</span>
+                            <span className="font-bold dark:text-white">{f.quantity}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -344,7 +545,10 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
         </div>
       )}
 
-      {/* Password Reset Section (always visible at the bottom of Admin/Inventory page) */}
+      {activeTab === 'settings' && role === 'owner' && (
+        <>
+          {/* Password Reset Section */}
+
       <Card className="border border-pink-200 dark:border-pink-900/50">
         <CardContent className="p-6 space-y-6">
           <div className="border-b border-slate-100 dark:border-slate-800/60 pb-4 flex flex-col gap-1">
@@ -417,8 +621,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
           </form>
         </CardContent>
       </Card>
+          {/* Session Management Section */}
 
-      {/* Session Management Section */}
       <Card className="border border-rose-200 dark:border-rose-900/50 bg-rose-50/5 dark:bg-rose-950/5">
         <CardContent className="p-6 space-y-4">
           <div className="flex flex-col gap-1">
@@ -440,6 +644,60 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
           </Button>
         </CardContent>
       </Card>
+        </>
+      )}
+      {activeTab === 'planner' && (
+        <Planner />
+      )}
+
+    
+      {parsedInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-800">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4 uppercase">Confirm Invoice</h3>
+            
+            <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto pr-2">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Date</span>
+                <p className="font-bold text-slate-900 dark:text-white">{parsedInvoice.date}</p>
+              </div>
+
+              {parsedInvoice.stickFlavours && parsedInvoice.stickFlavours.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-bold text-cyan-600 uppercase tracking-widest">Stick Flavours Added</span>
+                  <div className="space-y-1 mt-1">
+                    {parsedInvoice.stickFlavours.map((f: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded text-xs">
+                        <span className="dark:text-slate-300">{f.name}</span>
+                        <span className="font-bold text-cyan-600 dark:text-cyan-400">+{f.quantity} pcs</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedInvoice.potFlavours && parsedInvoice.potFlavours.length > 0 && (
+                <div>
+                  <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Pot Flavours Added</span>
+                  <div className="space-y-1 mt-1">
+                    {parsedInvoice.potFlavours.map((f: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-1.5 rounded text-xs">
+                        <span className="dark:text-slate-300">{f.name}</span>
+                        <span className="font-bold text-purple-600 dark:text-purple-400">+{f.quantity} pcs</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setParsedInvoice(null)}>CANCEL</Button>
+              <Button type="button" className="flex-1 bg-pink-600 hover:bg-pink-700 text-white" onClick={confirmInvoice}>CONFIRM</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

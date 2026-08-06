@@ -58,6 +58,7 @@ export default function Planner() {
   const [userOverrodeWeather, setUserOverrodeWeather] = useState(false);
   const [weatherCondition, setWeatherCondition] = useState<'normal' | 'hot' | 'rain'>('normal');
   const [isHoliday, setIsHoliday] = useState(false);
+  const [season, setSeason] = useState<'summer' | 'winter' | 'monsoon' | 'spring' | 'normal'>('normal');
   
   useEffect(() => {
     setUserOverrodeWeather(false);
@@ -84,7 +85,7 @@ export default function Planner() {
 
   // Calculations
   const calculations = useMemo(() => {
-    const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, targetDate);
+    const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, season, targetDate);
     
     // Calculate shortage based on current stock
     const relevantEntries = inventory?.lastUpdatedDate 
@@ -148,7 +149,7 @@ export default function Planner() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Input Panel */}
         <div className="space-y-6 lg:col-span-1">
-          <Card className={cardBg}>
+          <Card className={isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}>
             <CardHeader className="p-5 pb-2 border-b border-slate-100 dark:border-slate-800/60">
               <CardTitle className="text-xs font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
                 <Calendar className="w-4.5 h-4.5" /> 1. Select Parameters
@@ -174,174 +175,97 @@ export default function Planner() {
                 </div>
                 <div className="text-[10px] text-slate-500 font-bold uppercase mt-1">
                   Target day: <span className="text-cyan-500 font-black">{targetDayName}</span>
+                  {isWeekend && <span className="ml-2 text-amber-500 font-bold">(Weekend Modifier Active)</span>}
                 </div>
               </div>
 
               {/* Weather Adjustment */}
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                    Weather Outlook
-                  </Label>
-                  
-                </div>
-
-                {/* Sathyamangalam Auto-Fetch Weather Widget */}
-                <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
-                  isDark ? 'bg-slate-950/40 border-slate-800/80' : 'bg-slate-50 border-slate-200'
-                }`}>
-                  <div className="flex items-center gap-2.5">
-                    {weatherCondition === 'rain' ? (
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
-                        <CloudRain className="w-5 h-5 animate-bounce" />
-                      </div>
-                    ) : weatherCondition === 'hot' ? (
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500 shrink-0">
-                        <Sun className="w-5 h-5 animate-pulse" />
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-500 shrink-0">
-                        <CloudSun className="w-5 h-5" />
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-tight">Sathyamangalam</span>
-                        <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-                        <span className="text-slate-400 font-bold uppercase text-[9px]">Live Sync</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {weatherLoading ? (
-                          <span className="animate-pulse">Loading Live Weather...</span>
-                        ) : weatherError ? (
-                          <span className="text-rose-500">{weatherError}</span>
-                        ) : (() => {
-                          const matching = forecasts.find(f => f.date === targetDate);
-                          if (matching) {
-                            const desc = matching.precipitation > 1.0 
-                              ? 'Showers / Rainy' 
-                              : matching.tempMax >= 31.0 
-                                ? 'Sunny & Hot' 
-                                : 'Moderate Temperature';
-                            return (
-                              <span className="font-semibold">
-                                <span className="font-black text-slate-800 dark:text-slate-200">{matching.tempMax.toFixed(1)}°C</span> — {desc} {userOverrodeWeather ? '(Overridden)' : '(Auto)'}
-                              </span>
-                            );
-                          }
-                          return <span className="text-slate-400">No forecast found for selected date</span>;
-                        })()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWeatherCondition('rain');
-                      setUserOverrodeWeather(true);
-                    }}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      weatherCondition === 'rain'
-                        ? 'bg-blue-500 text-white border-blue-500 shadow-md'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
-                    }`}
-                  >
-                    <CloudRain className="w-4 h-4 mb-0.5" />
-                    <span>Rainy (-30%)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWeatherCondition('normal');
-                      setUserOverrodeWeather(true);
-                    }}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      weatherCondition === 'normal'
-                        ? 'bg-cyan-500 text-white border-cyan-500 shadow-md'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
-                    }`}
-                  >
-                    <CloudSun className="w-4 h-4 mb-0.5" />
-                    <span>Normal (0%)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWeatherCondition('hot');
-                      setUserOverrodeWeather(true);
-                    }}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      weatherCondition === 'hot'
-                        ? 'bg-amber-500 text-white border-amber-500 shadow-md'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
-                    }`}
-                  >
-                    <Sun className="w-4 h-4 mb-0.5" />
-                    <span>Sunny (+20%)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Event Adjustment */}
-              <div className="space-y-2">
                 <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                  Event / Crowd Factor
+                  Weather Condition
                 </Label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
-                    type="button"
-                    onClick={() => setIsHoliday(false)}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      !isWeekend && !isHoliday
-                        ? 'bg-slate-500 text-white border-slate-500'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
+                    onClick={() => { setWeatherCondition('normal'); setUserOverrodeWeather(true); }}
+                    className={`p-2 flex flex-col items-center justify-center gap-1 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      weatherCondition === 'normal'
+                        ? 'bg-cyan-500/10 border-cyan-500 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
-                    <span>Normal</span>
+                    <CloudSun className="w-4 h-4" /> Normal
                   </button>
                   <button
-                    type="button"
-                    disabled={true}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      isWeekend
-                        ? 'bg-pink-500 text-white border-pink-500 shadow-md'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
+                    onClick={() => { setWeatherCondition('hot'); setUserOverrodeWeather(true); }}
+                    className={`p-2 flex flex-col items-center justify-center gap-1 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      weatherCondition === 'hot'
+                        ? 'bg-amber-500/10 border-amber-500 text-amber-600 dark:text-amber-400 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
-                    <span>Weekend (+20%)</span>
+                    <Sun className="w-4 h-4" /> Hot (+15%)
                   </button>
                   <button
-                    type="button"
-                    onClick={() => setIsHoliday(true)}
-                    className={`h-11 rounded-xl flex flex-col items-center justify-center border text-[10px] font-black uppercase transition-all ${
-                      isHoliday
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                        : isDark
-                          ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
-                          : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
+                    onClick={() => { setWeatherCondition('rain'); setUserOverrodeWeather(true); }}
+                    className={`p-2 flex flex-col items-center justify-center gap-1 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      weatherCondition === 'rain'
+                        ? 'bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
-                    <PartyPopper className="w-4 h-4 mb-0.5" />
-                    <span>Holiday (+30%)</span>
+                    <CloudRain className="w-4 h-4" /> Rain (-30%)
                   </button>
                 </div>
               </div>
 
-              
-                
+              {/* Season Selection */}
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                  Season
+                </Label>
+                <select
+                  value={season}
+                  onChange={(e) => setSeason(e.target.value as any)}
+                  className={`w-full h-11 px-3 rounded-xl border text-xs font-bold uppercase tracking-wider ${
+                    isDark 
+                      ? 'bg-slate-950 border-slate-800 text-white focus:border-pink-500' 
+                      : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-pink-500'
+                  }`}
+                >
+                  <option value="normal">Normal / Neutral</option>
+                  <option value="summer">Summer Peak (+25%)</option>
+                  <option value="winter">Winter Slowdown (-15%)</option>
+                  <option value="monsoon">Monsoon / Rainy Season (-10%)</option>
+                  <option value="spring">Spring / Festival (+5%)</option>
+                </select>
+              </div>
+
+              {/* Special Events */}
+              <div className="space-y-2">
+                <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                  Special Events
+                </Label>
+                <button
+                  onClick={() => setIsHoliday(!isHoliday)}
+                  className={`w-full h-11 px-4 flex items-center justify-between rounded-xl border text-xs font-black uppercase tracking-wider transition-all ${
+                    isHoliday
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-md'
+                      : isDark
+                        ? 'border-slate-800 hover:bg-slate-900/40 text-slate-400'
+                        : 'border-slate-300 hover:bg-slate-100 text-slate-700 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <PartyPopper className="w-4 h-4 mb-0.5" />
+                    <span>Public Holiday / Festival</span>
+                  </div>
+                  {isHoliday ? (
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded text-white">+30%</span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">+30% Boost</span>
+                  )}
+                </button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -440,6 +364,59 @@ export default function Planner() {
                   </tbody>
                 </table>
               </div>
+
+              
+              {/* Flavour Wise Distribution */}
+              {(calculations.shortageStick > 0 || calculations.shortagePot > 0) && (
+                <div className="p-6 border-t border-slate-100 dark:border-slate-800/60 bg-white dark:bg-slate-900/50">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4 flex items-center gap-2">
+                    <Sparkles className="w-3 h-3 text-pink-500" /> Smart Flavour Distribution
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {calculations.shortageStick > 0 && (
+                      <div>
+                        <h5 className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest mb-3">Stick Kulfi Breakdown</h5>
+                        <div className="space-y-2">
+                          {inventory?.stickFlavours && inventory.stickFlavours.length > 0 ? (
+                            inventory.stickFlavours.map((f, i) => {
+                              const share = Math.round(calculations.shortageStick / inventory.stickFlavours!.length);
+                              return (
+                                <div key={i} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg text-xs">
+                                  <span className="dark:text-slate-300 font-medium">{f.name || 'Unnamed'}</span>
+                                  <span className="font-black text-cyan-600 dark:text-cyan-400">+{i === inventory.stickFlavours!.length - 1 ? calculations.shortageStick - (share * i) : share}</span>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-xs text-slate-400 italic">No stick flavours configured.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {calculations.shortagePot > 0 && (
+                      <div>
+                        <h5 className="text-[10px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-widest mb-3">Pot Kulfi Breakdown</h5>
+                        <div className="space-y-2">
+                          {inventory?.potFlavours && inventory.potFlavours.length > 0 ? (
+                            inventory.potFlavours.map((f, i) => {
+                              const share = Math.round(calculations.shortagePot / inventory.potFlavours!.length);
+                              return (
+                                <div key={i} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg text-xs">
+                                  <span className="dark:text-slate-300 font-medium">{f.name || 'Unnamed'}</span>
+                                  <span className="font-black text-pink-600 dark:text-pink-400">+{i === inventory.potFlavours!.length - 1 ? calculations.shortagePot - (share * i) : share}</span>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-xs text-slate-400 italic">No pot flavours configured.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Advanced Intelligence Details */}
               <div className="p-6 border-t border-slate-100 dark:border-slate-800/60 bg-slate-50 dark:bg-slate-900/30">

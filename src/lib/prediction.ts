@@ -6,6 +6,7 @@ export function calculatePrediction(
   isWeekend: boolean, 
   isHoliday: boolean, 
   weatherCondition: 'normal' | 'hot' | 'rain' | 'rainy',
+  season: 'summer' | 'winter' | 'monsoon' | 'spring' | 'normal' = 'normal',
   targetDateStr?: string
 ) {
   if (!entries || entries.length === 0) {
@@ -64,6 +65,12 @@ export function calculatePrediction(
   if (isHoliday) multiplier += 0.30; // 30% increase on holidays
   if (weatherCondition === 'hot') multiplier += 0.15; // 15% increase on hot days
   if (weatherCondition === 'rain' || weatherCondition === 'rainy') multiplier -= 0.30; // 30% decrease on rainy days
+  
+  if (season === 'summer') multiplier += 0.25;
+  if (season === 'winter') multiplier -= 0.15;
+  if (season === 'monsoon') multiplier -= 0.10;
+  if (season === 'spring') multiplier += 0.05;
+
   
   const predictedStick = Math.ceil((baseStick * multiplier) / 5) * 5 + 15;
   const predictedPot = Math.ceil((basePot * multiplier) / 5) * 5 + 15;

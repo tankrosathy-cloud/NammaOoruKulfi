@@ -1,12 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useEntries, useSettings, useExpenses } from '../store';
+import { useEntries, useSettings, useExpenses, useInventory } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
 import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { useWeather } from '../lib/useWeather';
 import { calculatePrediction } from '../lib/prediction';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from 'motion/react';
 
@@ -37,7 +37,8 @@ export default function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const { entries, loading: entriesLoading, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading } = useExpenses();
-  const loading = entriesLoading || expensesLoading;
+  const { inventory, loading: inventoryLoading } = useInventory();
+  const loading = entriesLoading || expensesLoading || inventoryLoading;
   const { settings } = useSettings();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -108,7 +109,8 @@ export default function Dashboard() {
     const last7DaysEntries = sorted.slice(0, 7).reverse();
     const chartData = last7DaysEntries.map(e => ({
       date: format(parseISO(e.date), 'dd MMM'),
-      sales: Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0))
+      stickSold: e.stickSold || 0,
+      potSold: e.potSold || 0
     }));
 
     // Current Month Daily Sales Trend
@@ -180,8 +182,34 @@ export default function Dashboard() {
     };
   }, [entries, expenses]);
 
+  
+  const inventoryStats = useMemo(() => {
+    const relevantEntries = inventory?.lastUpdatedDate
+      ? entries.filter(e => e.date >= inventory.lastUpdatedDate)
+      : entries;
+    const totalStickSoldSinceUpdate = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+    const totalPotSoldSinceUpdate = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+    const availableStick = Math.max(0, (inventory?.stickQuantity || 0) - totalStickSoldSinceUpdate);
+    const availablePot = Math.max(0, (inventory?.potQuantity || 0) - totalPotSoldSinceUpdate);
+    
+    const now = new Date();
+    const currentMonthStartStr = format(startOfMonth(now), 'yyyy-MM-dd');
+    const currentMonthEndStr = format(endOfMonth(now), 'yyyy-MM-dd');
+    const thisMonthEntries = entries.filter(e => e.date >= currentMonthStartStr && e.date <= currentMonthEndStr);
+    
+    const totalStickSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
+    const totalPotSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+
+    return {
+      totalStickSoldThisMonth,
+      totalPotSoldThisMonth,
+      availableStick,
+      availablePot
+    };
+  }, [entries, inventory]);
+
   const nextDaySuggestion = useMemo(() => {
-    const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, tomorrowStr);
+    const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, 'normal', tomorrowStr);
     return { ...result, multiplier: Math.round(result.multiplier * 100) };
   }, [entries, isWeekend, isHoliday, weatherCondition, tomorrowStr]);
 
@@ -348,6 +376,49 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
+      </motion.div>
+      {/* Inventory Stats */}
+      <motion.div variants={itemVariants} className="space-y-4">
+        <h3 className={`text-xs font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
+          Inventory Status
+        </h3>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
+                <Package className="w-3 h-3" /> Stick Sold (Month)
+              </p>
+              <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{inventoryStats.totalStickSoldThisMonth} <span className="text-sm font-bold">pcs</span></div>
+            </CardContent>
+          </Card>
+          
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-pink-600 dark:text-pink-400 flex items-center gap-1">
+                <Package className="w-3 h-3" /> Pot Sold (Month)
+              </p>
+              <div className="text-2xl font-black text-pink-600 dark:text-pink-400">{inventoryStats.totalPotSoldThisMonth} <span className="text-sm font-bold">pcs</span></div>
+            </CardContent>
+          </Card>
+
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-800 dark:text-cyan-500">
+                Stick Available
+              </p>
+              <div className="text-2xl font-black text-cyan-800 dark:text-cyan-500">{inventoryStats.availableStick} <span className="text-sm font-bold">pcs</span></div>
+            </CardContent>
+          </Card>
+          
+          <Card className={cardBg}>
+            <CardContent className="p-4 flex flex-col justify-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-pink-800 dark:text-pink-500">
+                Pot Available
+              </p>
+              <div className="text-2xl font-black text-pink-800 dark:text-pink-500">{inventoryStats.availablePot} <span className="text-sm font-bold">pcs</span></div>
+            </CardContent>
+          </Card>
+        </div>
       </motion.div>
 
       {/* Current Month Analytics (Trends & Distribution) */}
@@ -525,13 +596,13 @@ export default function Dashboard() {
           <Card className={cardBg}>
             <CardHeader className="p-5 pb-2">
               <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
-                <BarChart3 className="w-4 h-4 text-cyan-500" /> Last 7 Days Sales
+                <BarChart3 className="w-4 h-4 text-cyan-500" /> Last 7 Days Quantity Sold
               </CardTitle>
             </CardHeader>
             <CardContent className="p-5 pt-4">
               <div className="h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={stats.chartData}>
+                  <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <XAxis 
                       dataKey="date" 
                       stroke={isDark ? "#475569" : "#94A3B8"} 
@@ -544,7 +615,6 @@ export default function Dashboard() {
                       fontSize={10} 
                       tickLine={false} 
                       axisLine={false} 
-                      tickFormatter={(value) => `₹${value}`} 
                     />
                     <Tooltip 
                       contentStyle={{ 
@@ -553,15 +623,12 @@ export default function Dashboard() {
                         borderRadius: '12px',
                         color: isDark ? '#ffffff' : '#0f172a'
                       }}
-                      itemStyle={{ color: '#06b6d4', fontWeight: 'bold' }}
                       labelStyle={{ color: isDark ? '#94a3b8' : '#475569', fontSize: '11px', fontWeight: 'bold' }}
-                      formatter={(value: number) => [formatCurrency(value), 'Sales']}
+                      itemStyle={{ fontWeight: 'bold' }}
                     />
-                    <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
-                      {stats.chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === stats.chartData.length - 1 ? '#06b6d4' : (isDark ? '#334155' : '#cbd5e1')} />
-                      ))}
-                    </Bar>
+                    <Legend wrapperStyle={{ fontSize: '10px' }} />
+                    <Bar dataKey="stickSold" name="Stick" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="potSold" name="Pot" fill="#ec4899" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

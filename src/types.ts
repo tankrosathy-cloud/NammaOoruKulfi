@@ -41,6 +41,8 @@ export interface InventoryStock {
   stickQuantity: number;
   potQuantity: number;
   lastUpdatedDate?: string;
+  stickFlavours?: { name: string; quantity: number }[];
+  potFlavours?: { name: string; quantity: number }[];
 }
 
 export interface ExpenseEntry {

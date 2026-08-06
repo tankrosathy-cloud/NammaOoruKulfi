@@ -7,7 +7,6 @@ import Reports from './pages/Reports';
 import SettingsPage from './pages/Settings';
 import AddExpense from './pages/AddExpense';
 import HistoryLogs from './pages/HistoryLogs';
-import Planner from './pages/Planner';
 import { auth } from './lib/firebase';
 import { StoreProvider } from './store';
 import { signOut } from 'firebase/auth';
@@ -23,7 +22,7 @@ function AppShellContent() {
   const username = userEmail.split('@')[0].toLowerCase();
   const role = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username) ? 'owner' : 'manager';
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'planner' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
 
   useEffect(() => {
     const mainContainer = document.querySelector('main');
@@ -42,7 +41,7 @@ function AppShellContent() {
     setActiveTab('expense');
   };
 
-  const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'planner' | 'settings' | 'logs') => {
+  const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs') => {
     if (tab !== 'add') {
       setEditDate(undefined);
     }
@@ -123,7 +122,6 @@ function AppShellContent() {
         {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={role} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
-        {activeTab === 'planner' && <Planner />}
         {activeTab === 'settings' && <SettingsPage role={role} />}
         {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
       </main>
@@ -163,13 +161,6 @@ function AppShellContent() {
           label="REC" 
           active={activeTab === 'reports'} 
           onClick={() => navigateTab('reports')} 
-          isDark={isDark}
-        />
-        <NavItem 
-          icon={<Sparkles className="w-5 h-5" />} 
-          label="Planner" 
-          active={activeTab === 'planner'} 
-          onClick={() => navigateTab('planner')} 
           isDark={isDark}
         />
         <NavItem 
