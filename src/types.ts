@@ -54,7 +54,26 @@ export interface ExpenseEntry {
   notes: string;
 }
 
+export interface ProfitWithdrawal {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  notes: string;
+}
+
+
+export interface SpecialOrder {
+  id: string;
+  date: string;
+  eventType: string; // e.g., 'Birthday', 'Marriage', 'Other'
+  stickQuantity: number;
+  potQuantity: number;
+  amountReceived: number;
+  notes: string;
+}
+
 export interface AppLog {
+
   id: string;
   timestamp: string;
   userEmail: string;

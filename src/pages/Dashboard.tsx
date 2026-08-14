@@ -199,10 +199,14 @@ export default function Dashboard() {
     
     const totalStickSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
     const totalPotSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+    const avgStickSoldThisMonth = thisMonthEntries.length > 0 ? Math.round(totalStickSoldThisMonth / thisMonthEntries.length) : 0;
+    const avgPotSoldThisMonth = thisMonthEntries.length > 0 ? Math.round(totalPotSoldThisMonth / thisMonthEntries.length) : 0;
 
     return {
       totalStickSoldThisMonth,
       totalPotSoldThisMonth,
+      avgStickSoldThisMonth,
+      avgPotSoldThisMonth,
       availableStick,
       availablePot
     };
@@ -389,6 +393,7 @@ export default function Dashboard() {
                 <Package className="w-3 h-3" /> Stick Sold (Month)
               </p>
               <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{inventoryStats.totalStickSoldThisMonth} <span className="text-sm font-bold">pcs</span></div>
+              <p className="text-[10px] text-cyan-700/70 dark:text-cyan-400/70 font-semibold mt-0.5">Avg: {inventoryStats.avgStickSoldThisMonth} / day</p>
             </CardContent>
           </Card>
           
@@ -398,6 +403,7 @@ export default function Dashboard() {
                 <Package className="w-3 h-3" /> Pot Sold (Month)
               </p>
               <div className="text-2xl font-black text-pink-600 dark:text-pink-400">{inventoryStats.totalPotSoldThisMonth} <span className="text-sm font-bold">pcs</span></div>
+              <p className="text-[10px] text-pink-700/70 dark:text-pink-400/70 font-semibold mt-0.5">Avg: {inventoryStats.avgPotSoldThisMonth} / day</p>
             </CardContent>
           </Card>
 

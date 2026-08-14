@@ -13,7 +13,15 @@ service cloud.firestore {
     match /expenses/{document=**} {
       allow read, write, delete: if request.auth != null;
     }
+    match /profitWithdrawals/{document=**} {
+      allow read, write, delete: if request.auth != null;
+    }
+    
+    match /specialOrders/{document=**} {
+      allow read, write, delete: if request.auth != null;
+    }
     match /logs/{document=**} {
+
       allow read, write, delete: if request.auth != null;
     }
   }

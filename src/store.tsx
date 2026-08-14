@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog } from './types';
+import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder } from './types';
 import { db, auth } from './lib/firebase';
 import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, where, orderBy, limit } from 'firebase/firestore';
 
@@ -252,7 +252,148 @@ export async function deleteExpense(id: string): Promise<void> {
   }
 }
 
+export async function saveProfitWithdrawal(withdrawal: ProfitWithdrawal): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  triggerWriteStart();
+  const withdrawalWithUser = {
+    ...withdrawal,
+    userId: user.uid
+  };
+  
+  try {
+    await setDoc(doc(db, 'profitWithdrawals', withdrawal.id), withdrawalWithUser);
+    await addLog('SAVE_PROFIT_WITHDRAWAL', `Logged profit taken: ₹${withdrawal.amount} on ${withdrawal.date}`);
+  } catch (error) {
+    console.error("Error saving profit withdrawal:", error);
+    throw error;
+  }
+}
+
+export async function deleteProfitWithdrawal(id: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  const username = (user.email || '').split('@')[0].toLowerCase();
+  const isOwner = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  if (!isOwner) {
+    throw new Error("Staff members do not have permission to delete profit withdrawals.");
+  }
+  
+  triggerWriteStart();
+  try {
+    const docRef = doc(db, 'profitWithdrawals', id);
+    const snap = await getDoc(docRef);
+    let payload: any = null;
+    let details = id;
+    if (snap.exists()) {
+      payload = snap.data();
+      details = `₹${payload.amount} on ${payload.date}`;
+    }
+    await deleteDoc(docRef);
+    await addLog('DELETE_PROFIT_WITHDRAWAL', `Deleted profit withdrawal: ${details}`, payload);
+  } catch (error) {
+    console.error("Error deleting profit withdrawal:", error);
+    throw error;
+  }
+}
+
+
+export async function saveSpecialOrder(order: SpecialOrder, currentInventory: InventoryStock): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  triggerWriteStart();
+  const orderWithUser = {
+    ...order,
+    userId: user.uid
+  };
+  
+  try {
+    await setDoc(doc(db, 'specialOrders', order.id), orderWithUser);
+    
+    // Update inventory
+    const newInventory = {
+      ...currentInventory,
+      stickQuantity: Math.max(0, currentInventory.stickQuantity - order.stickQuantity),
+      potQuantity: Math.max(0, currentInventory.potQuantity - order.potQuantity),
+      lastUpdatedDate: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'inventory', 'global'), { ...newInventory, id: 'global', userId: user.uid });
+    
+    await addLog('SAVE_SPECIAL_ORDER', `Special Order (${order.eventType}) on ${order.date}: ₹${order.amountReceived}`);
+  } catch (error) {
+    console.error("Error saving special order:", error);
+    throw error;
+  }
+}
+
+
+export async function updateSpecialOrder(oldOrder: SpecialOrder, newOrder: SpecialOrder, currentInventory: InventoryStock): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  triggerWriteStart();
+  const orderWithUser = {
+    ...newOrder,
+    userId: user.uid
+  };
+  
+  try {
+    await setDoc(doc(db, 'specialOrders', newOrder.id), orderWithUser);
+    
+    // Calculate difference (new - old means we took more, so we deduct more. If we took less, we add back)
+    const stickDiff = newOrder.stickQuantity - oldOrder.stickQuantity;
+    const potDiff = newOrder.potQuantity - oldOrder.potQuantity;
+    
+    const newInventory = {
+      ...currentInventory,
+      stickQuantity: Math.max(0, currentInventory.stickQuantity - stickDiff),
+      potQuantity: Math.max(0, currentInventory.potQuantity - potDiff),
+      lastUpdatedDate: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'inventory', 'global'), { ...newInventory, id: 'global', userId: user.uid });
+    
+    await addLog('UPDATE_SPECIAL_ORDER', `Updated special order for ${newOrder.eventType}`);
+  } catch (error) {
+    console.error("Error updating special order:", error);
+    throw error;
+  }
+}
+
+export async function deleteSpecialOrder(order: SpecialOrder, currentInventory: InventoryStock): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  
+  const username = (user.email || '').split('@')[0].toLowerCase();
+  const isOwner = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  if (!isOwner) {
+    throw new Error("Staff members do not have permission to delete special orders.");
+  }
+  
+  triggerWriteStart();
+  try {
+    await deleteDoc(doc(db, 'specialOrders', order.id));
+    
+    // Revert inventory
+    const newInventory = {
+      ...currentInventory,
+      stickQuantity: currentInventory.stickQuantity + order.stickQuantity,
+      potQuantity: currentInventory.potQuantity + order.potQuantity,
+      lastUpdatedDate: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'inventory', 'global'), { ...newInventory, id: 'global', userId: user.uid });
+    
+    await addLog('DELETE_SPECIAL_ORDER', `Deleted special order: ₹${order.amountReceived} on ${order.date}`);
+  } catch (error) {
+    console.error("Error deleting special order:", error);
+    throw error;
+  }
+}
+
 // React Hooks & Context
+
 import { createContext, useContext, ReactNode } from 'react';
 
 interface StoreState {
@@ -268,6 +409,10 @@ interface StoreState {
   inventoryLoading: boolean;
   expenses: ExpenseEntry[];
   expensesLoading: boolean;
+  profitWithdrawals: ProfitWithdrawal[];
+  profitWithdrawalsLoading: boolean;
+  specialOrders: SpecialOrder[];
+  specialOrdersLoading: boolean;
 }
 
 const StoreContext = createContext<StoreState | null>(null);
@@ -289,6 +434,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [expensesLimit, setExpensesLimit] = useState(1000);
   const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
 
+  const [profitWithdrawals, setProfitWithdrawals] = useState<ProfitWithdrawal[]>([]);
+  const [profitWithdrawalsLoading, setProfitWithdrawalsLoading] = useState(true);
+  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
+  const [specialOrdersLoading, setSpecialOrdersLoading] = useState(true);
+
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) {
@@ -296,10 +446,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSettings(DEFAULT_SETTINGS);
       setInventory(DEFAULT_INVENTORY);
       setExpenses([]);
+      setProfitWithdrawals([]);
+      setSpecialOrders([]);
       setEntriesLoading(false);
       setSettingsLoading(false);
       setInventoryLoading(false);
       setExpensesLoading(false);
+      setProfitWithdrawalsLoading(false);
+      setSpecialOrdersLoading(false);
       return;
     }
 
@@ -336,11 +490,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setExpensesLoading(false);
     });
 
+    const unsubProfits = onSnapshot(query(collection(db, 'profitWithdrawals'), orderBy('date', 'desc')), (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProfitWithdrawal));
+      setProfitWithdrawals(docs.sort((a, b) => b.date.localeCompare(a.date)));
+      setProfitWithdrawalsLoading(false);
+    });
+
+    
+    const unsubSpecialOrders = onSnapshot(query(collection(db, 'specialOrders'), orderBy('date', 'desc')), (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SpecialOrder));
+      setSpecialOrders(docs.sort((a, b) => b.date.localeCompare(a.date)));
+      setSpecialOrdersLoading(false);
+    });
+
     return () => {
+
       unsubEntries();
       unsubSettings();
       unsubInventory();
       unsubExpenses();
+      unsubProfits();
+      unsubSpecialOrders();
     };
   }, [entriesLimit, expensesLimit]);
 
@@ -352,7 +522,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       entries, entriesLoading, loadMoreEntries, hasMoreEntries,
       settings, settingsLoading,
       inventory, inventoryLoading,
-      expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses
+      expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses,
+      profitWithdrawals, profitWithdrawalsLoading,
+      specialOrders, specialOrdersLoading
     }}>
       {children}
     </StoreContext.Provider>
@@ -381,6 +553,19 @@ export function useExpenses() {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error("useExpenses must be used within StoreProvider");
   return { expenses: ctx.expenses, loading: ctx.expensesLoading, loadMore: ctx.loadMoreExpenses, hasMore: ctx.hasMoreExpenses, reload: () => {} };
+}
+
+export function useProfitWithdrawals() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useProfitWithdrawals must be used within StoreProvider");
+  return { profitWithdrawals: ctx.profitWithdrawals, loading: ctx.profitWithdrawalsLoading };
+}
+
+
+export function useSpecialOrders() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useSpecialOrders must be used within StoreProvider");
+  return { specialOrders: ctx.specialOrders, loading: ctx.specialOrdersLoading };
 }
 
 export function useLogs() {

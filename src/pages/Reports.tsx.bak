@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory } from '../store';
+import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal } from '../store';
 import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -7,7 +7,7 @@ import { Trash2, Edit2, Download, Eye, X, Plus, Calendar } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
-import { ExpenseEntry, ProfitWithdrawal, SpecialOrder } from '../types';
+import { ExpenseEntry, ProfitWithdrawal } from '../types';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 export default function Reports({ role = 'owner', onEdit, onEditExpense }: { role?: 'owner' | 'manager', onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
@@ -25,19 +25,10 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const [showProfitModal, setShowProfitModal] = useState(false);
   const [profitForm, setProfitForm] = useState({ amount: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
   
-  
-  const { specialOrders } = useSpecialOrders();
-  const { inventory } = useInventory();
-  const [showSpecialModal, setShowSpecialModal] = useState(false);
-  const [specialDeleteConfirmId, setSpecialDeleteConfirmId] = useState<string | null>(null);
-  const [specialForm, setSpecialForm] = useState({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
-  const [specialEditId, setSpecialEditId] = useState<string | null>(null);
-  const [specialOldOrder, setSpecialOldOrder] = useState<SpecialOrder | null>(null);
-  const [profitEditId, setProfitEditId] = useState<string | null>(null);
-const [viewEntry, setViewEntry] = useState<any | null>(null);
-  const [activeListTab, setActiveListTab] = useState<string>('entries');
+  const [viewEntry, setViewEntry] = useState<any | null>(null);
+  const [activeListTab, setActiveListTab] = useState<'entries' | 'expenses' | 'profits'>('entries');
 
-  const { filteredEntries, filteredExpenses, filteredProfits, filteredSpecials, chartData, totals, profitTaken, retainedEarnings } = useMemo(() => {
+  const { filteredEntries, filteredExpenses, filteredProfits, chartData, totals } = useMemo(() => {
     const start = startOfMonth(currentDate);
     const end = endOfMonth(currentDate);
 
@@ -51,16 +42,6 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
     }).sort((a, b) => b.date.localeCompare(a.date));
 
     const filteredProfs = profitWithdrawals.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start, end });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => b.date.localeCompare(a.date));
-
-    
-    const filteredSpecials = specialOrders.filter(e => {
       try {
         const date = parseISO(e.date);
         return isWithinInterval(date, { start, end });
@@ -97,14 +78,6 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0 }
     );
     
-    
-    // Add special orders to revenue and items sold
-    filteredSpecials.forEach(order => {
-      totals.revenue += order.amountReceived;
-      totals.stickSold += order.stickQuantity;
-      totals.potSold += order.potQuantity;
-    });
-
     // Add standalone expenses to totals for owner only
     if (isOwner) {
       filteredExps.forEach(exp => {
@@ -121,94 +94,30 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
     });
     const retainedEarnings = totals.finalAmount - profitTaken;
 
-    return { filteredEntries: filtered, filteredExpenses: filteredExps, filteredProfits: filteredProfs, filteredSpecials, chartData, totals, profitTaken, retainedEarnings };
-  }, [entries, expenses, profitWithdrawals, specialOrders, currentDate]);
+    return { filteredEntries: filtered, filteredExpenses: filteredExps, filteredProfits: filteredProfs, chartData, totals, profitTaken, retainedEarnings };
+  }, [entries, expenses, profitWithdrawals, currentDate]);
 
   
   const handleProfitSubmit = async () => {
     if (!profitForm.amount) return;
     try {
       await saveProfitWithdrawal({
-        id: profitEditId ? profitEditId : Date.now().toString(),
+        id: Date.now().toString(),
         date: profitForm.date,
         amount: Number(profitForm.amount),
         notes: profitForm.notes
       });
       setShowProfitModal(false);
-      setProfitEditId(null);
       setProfitForm({ amount: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
     } catch (e) {
       console.error(e);
     }
   };
 
-  const onEditProfit = (profit: ProfitWithdrawal) => {
-    setProfitEditId(profit.id);
-    setProfitForm({
-      amount: profit.amount.toString(),
-      notes: profit.notes || '',
-      date: profit.date
-    });
-    setShowProfitModal(true);
-  };
-
   const handleDeleteProfit = async (id: string) => {
     await deleteProfitWithdrawal(id);
     setProfitDeleteConfirmId(null);
   };
-
-  const handleSpecialSubmit = async () => {
-    if (!specialForm.amountReceived) return;
-    try {
-      if (specialEditId && specialOldOrder) {
-        await updateSpecialOrder(specialOldOrder, {
-          id: specialEditId,
-          date: specialForm.date,
-          eventType: specialForm.eventType,
-          stickQuantity: Number(specialForm.stickQuantity) || 0,
-          potQuantity: Number(specialForm.potQuantity) || 0,
-          amountReceived: Number(specialForm.amountReceived),
-          notes: specialForm.notes
-        }, inventory);
-      } else {
-        await saveSpecialOrder({
-          id: Date.now().toString(),
-          date: specialForm.date,
-          eventType: specialForm.eventType,
-          stickQuantity: Number(specialForm.stickQuantity) || 0,
-          potQuantity: Number(specialForm.potQuantity) || 0,
-          amountReceived: Number(specialForm.amountReceived),
-          notes: specialForm.notes
-        }, inventory);
-      }
-      setShowSpecialModal(false);
-      setSpecialEditId(null);
-      setSpecialOldOrder(null);
-      setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const onEditSpecial = (order: SpecialOrder) => {
-    setSpecialEditId(order.id);
-    setSpecialOldOrder(order);
-    setSpecialForm({
-      eventType: order.eventType,
-      stickQuantity: order.stickQuantity.toString(),
-      potQuantity: order.potQuantity.toString(),
-      amountReceived: order.amountReceived.toString(),
-      notes: order.notes || '',
-      date: order.date
-    });
-    setShowSpecialModal(true);
-  };
-
-  const handleDeleteSpecial = async (order: SpecialOrder) => {
-    await deleteSpecialOrder(order, inventory);
-    setSpecialDeleteConfirmId(null);
-  };
-
 
   const handleDelete = async (id: string) => {
     await deleteEntry(id);
@@ -260,7 +169,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
     <div className="p-6 space-y-8 pb-32">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">Reports</h2>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handlePrevMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-850 dark:text-white dark:hover:bg-slate-800">&lt;</Button>
           <span className="text-xs font-black tracking-wider uppercase w-24 text-center text-slate-700 dark:text-slate-200">{format(currentDate, 'MMM yyyy')}</span>
           <Button variant="outline" size="sm" onClick={handleNextMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-850 dark:text-white dark:hover:bg-slate-800">&gt;</Button>
@@ -369,10 +278,10 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="flex gap-3 mb-6">
         <button 
           onClick={() => setActiveListTab('entries')}
-          className={`flex-1 min-w-[130px] p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
+          className={`flex-1 p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
             activeListTab === 'entries' 
               ? isDark ? 'bg-cyan-500/20 border-cyan-500/50 shadow-lg' : 'bg-cyan-50 border-cyan-200 shadow-md' 
               : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
@@ -391,7 +300,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
         {isOwner && (
           <button 
             onClick={() => setActiveListTab('expenses')}
-            className={`flex-1 min-w-[130px] p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
+            className={`flex-1 p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
               activeListTab === 'expenses' 
                 ? isDark ? 'bg-pink-500/20 border-pink-500/50 shadow-lg' : 'bg-pink-50 border-pink-200 shadow-md' 
                 : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
@@ -405,55 +314,9 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                 activeListTab === 'expenses' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
               }`}>{filteredExpenses.length} <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Records</span></p>
             </div>
-          </button> )}
-          {isOwner && (
-          <button 
-            onClick={() => setActiveListTab('specials')}
-            className={`flex-1 min-w-[130px] p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
-              activeListTab === 'specials' 
-                ? isDark ? 'bg-indigo-500/20 border-indigo-500/50 shadow-lg' : 'bg-indigo-50 border-indigo-200 shadow-md' 
-                : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
-            }`}
-          >
-            <div className="relative z-10">
-              <h3 className={`text-[10px] font-black uppercase tracking-widest mb-1 ${
-                activeListTab === 'specials' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'
-              }`}>Event Orders</h3>
-              <p className={`text-lg font-black ${
-                activeListTab === 'specials' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
-              }`}>{filteredSpecials.length} <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Records</span></p>
-            </div>
-          </button>
-        )}
-        {isOwner && (
-          <button 
-            onClick={() => setActiveListTab('profits')}
-            className={`flex-1 min-w-[130px] p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
-              activeListTab === 'profits' 
-                ? isDark ? 'bg-fuchsia-500/20 border-fuchsia-500/50 shadow-lg' : 'bg-fuchsia-50 border-fuchsia-200 shadow-md' 
-                : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
-            }`}
-          >
-            <div className="relative z-10">
-              <h3 className={`text-[10px] font-black uppercase tracking-widest mb-1 ${
-                activeListTab === 'profits' ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-slate-500'
-              }`}>Profit Taken</h3>
-              <p className={`text-lg font-black ${
-                activeListTab === 'profits' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
-              }`}>{filteredProfits.length} <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Records</span></p>
-            </div>
           </button>
         )}
       </div>
-
-      {activeListTab === 'specials' && isOwner && (
-        <div className="flex justify-end mb-4">
-          <Button onClick={() => setShowSpecialModal(true)} className="gap-2 h-10 rounded-xl px-4 text-sm font-bold tracking-wide shadow-md hover:shadow-lg transition-all">
-            <Plus className="w-4 h-4" /> Log Event Order
-          </Button>
-        </div>
-      )}
-
 
       {activeListTab === 'entries' && (
         <div>
@@ -464,8 +327,8 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
             {filteredEntries.map(entry => (
               <Card key={entry.id}>
                 <CardContent className="p-5">
-                  <div className="flex justify-between items-start gap-4 mb-2">
-                    <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
                       <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3">
                         {isOwner && (
@@ -490,12 +353,12 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                     </div>
                     {isOwner ? (
                       deleteConfirmId === entry.id ? (
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-2">
                           <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
                           <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDelete(entry.id)}>Delete</Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(entry)}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -508,7 +371,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                         </div>
                       )
                     ) : (
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(entry)}>
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -547,10 +410,10 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
               {filteredExpenses.map(expense => (
                 <Card key={expense.id} className="border-red-100 dark:border-red-900/50 bg-red-50/60 dark:bg-red-950/20">
                   <CardContent className="p-5">
-                    <div className="flex justify-between items-start gap-4 mb-2">
-                      <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
                         <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(expense.date), 'dd MMM yyyy')}</span>
-                        <div className="flex flex-wrap items-center gap-4 mt-3">
+                        <div className="flex items-center gap-4 mt-3">
                           <div>
                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount</p>
                              <p className="font-black text-sm text-pink-500">{formatCurrency(expense.amount)}</p>
@@ -561,14 +424,14 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
+                      <div className="flex gap-2">
                         {expenseDeleteConfirmId === expense.id ? (
-                          <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex items-center gap-2">
                             <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400" onClick={() => setExpenseDeleteConfirmId(null)}>Cancel</Button>
                             <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDeleteExpense(expense.id)}>Delete</Button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1 flex-shrink-0">
+                          <div className="flex items-center gap-1">
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(expense)}>
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -593,195 +456,19 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           )}
         </div>
       )}
-
-      {isOwner && activeListTab === 'profits' && (
-        <div>
-          {filteredProfits.length === 0 ? (
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No profit records for this month.</p>
-          ) : (
-            <div className="space-y-4">
-              {filteredProfits.map(profit => (
-                <Card key={profit.id} className="border-fuchsia-100 dark:border-fuchsia-900/50 bg-fuchsia-50/60 dark:bg-fuchsia-950/20">
-                  <CardContent className="p-5">
-                    <div className="flex justify-between items-start gap-4 mb-2">
-                      <div className="flex-1 min-w-0">
-                        <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(profit.date), 'dd MMM yyyy')}</span>
-                        <div className="flex flex-wrap items-center gap-4 mt-3">
-                          <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount</p>
-                             <p className="font-black text-sm text-fuchsia-500">{formatCurrency(profit.amount)}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        {profitDeleteConfirmId === profit.id ? (
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400" onClick={() => setProfitDeleteConfirmId(null)}>Cancel</Button>
-                            <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDeleteProfit(profit.id)}>Delete</Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry({ ...profit, _isProfit: true })}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 hover:bg-cyan-500/10 rounded-full" onClick={() => onEditProfit(profit)}>
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setProfitDeleteConfirmId(profit.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {profit.notes && (
-                      <div className="bg-slate-100/60 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200/40 dark:border-slate-800/50 mt-4">
-                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Notes</p>
-                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug uppercase">{profit.notes}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {isOwner && activeListTab === 'specials' && (
-        <div>
-          {filteredSpecials.length === 0 ? (
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No event orders for this month.</p>
-          ) : (
-            <div className="space-y-4">
-              {filteredSpecials.map(order => (
-                <Card key={order.id} className="border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-950/20">
-                  <CardContent className="p-5">
-                    <div className="flex justify-between items-start gap-4 mb-2">
-                      <div className="flex-1 min-w-0">
-                        <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(order.date), 'dd MMM yyyy')}</span>
-                        <div className="flex flex-wrap items-center gap-4 mt-3">
-                          <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount</p>
-                             <p className="font-black text-sm text-cyan-500">{formatCurrency(order.amountReceived)}</p>
-                          </div>
-                          <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type</p>
-                             <p className="font-black text-sm text-slate-700 dark:text-slate-300">{order.eventType}</p>
-                          </div>
-                          <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sticks</p>
-                             <p className="font-black text-sm text-amber-500">{order.stickQuantity || 0}</p>
-                          </div>
-                          <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pots</p>
-                             <p className="font-black text-sm text-purple-500">{order.potQuantity || 0}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        {specialDeleteConfirmId === order.id ? (
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Button variant="ghost" size="sm" className="h-8 text-slate-500 hover:text-slate-800 dark:text-slate-400" onClick={() => setSpecialDeleteConfirmId(null)}>Cancel</Button>
-                            <Button variant="destructive" size="sm" className="h-8 bg-pink-600 hover:bg-pink-700 text-white" onClick={() => handleDeleteSpecial(order)}>Delete</Button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(order)}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 hover:bg-cyan-500/10 rounded-full" onClick={() => onEditSpecial(order)}>
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-pink-500 hover:bg-pink-500/10 rounded-full" onClick={() => setSpecialDeleteConfirmId(order.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {order.notes && (
-                      <div className="bg-slate-100/60 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200/40 dark:border-slate-800/50 mt-4">
-                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Notes</p>
-                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug uppercase">{order.notes}</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {viewEntry && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={() => setViewEntry(null)}>
           <div className={`w-full max-w-md p-6 rounded-3xl shadow-xl overflow-hidden ${isDark ? 'bg-slate-900 border border-slate-800' : 'bg-white'}`} onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className={`text-lg font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {viewEntry.eventType ? 'Event Order Details' : viewEntry._isProfit ? 'Profit Details' : viewEntry.category ? 'Expense Details' : 'Entry Details'}
+                {viewEntry.category ? 'Expense Details' : 'Entry Details'}
               </h3>
               <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setViewEntry(null)}>
                 <X className="w-5 h-5 text-slate-500" />
               </Button>
             </div>
             <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-              {viewEntry._isProfit ? (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Date</p>
-                      <p className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{format(parseISO(viewEntry.date), 'dd MMM yyyy')}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount Taken</p>
-                      <p className={`font-black text-sm text-fuchsia-500`}>{formatCurrency(viewEntry.amount)}</p>
-                    </div>
-                  </div>
-                  {viewEntry.notes && (
-                    <div className="mt-4 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-                      <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Notes</p>
-                      <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{viewEntry.notes}</p>
-                    </div>
-                  )}
-                </>
-              ) : viewEntry.eventType ? (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Date</p>
-                      <p className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{format(parseISO(viewEntry.date), 'dd MMM yyyy')}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Event Type</p>
-                      <p className={`font-black text-sm text-indigo-500`}>{viewEntry.eventType}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Amount Received</p>
-                      <p className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{formatCurrency(viewEntry.amountReceived)}</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Inventory Deducted</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-amber-500/10 p-2 rounded-lg">
-                        <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase">Sticks</p>
-                        <p className={`font-black text-xs text-amber-600 dark:text-amber-400`}>{viewEntry.stickQuantity}</p>
-                      </div>
-                      <div className="bg-purple-500/10 p-2 rounded-lg">
-                        <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase">Pots</p>
-                        <p className={`font-black text-xs text-purple-600 dark:text-purple-400`}>{viewEntry.potQuantity}</p>
-                      </div>
-                    </div>
-                  </div>
-                  {viewEntry.notes && (
-                    <div className="mt-4 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-                      <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Notes</p>
-                      <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{viewEntry.notes}</p>
-                    </div>
-                  )}
-                </>
-              ) : viewEntry.category ? (
+              {viewEntry.category ? (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -906,138 +593,6 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           </div>
         </div>
       )}
-
-      {showSpecialModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <Card className={`w-full max-w-md max-h-[90vh] overflow-y-auto ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white'}`}>
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{specialEditId ? 'Edit Event Order' : 'Log Event / Bulk Order'}</h2>
-                <Button variant="ghost" size="sm" onClick={() => { setShowSpecialModal(false); setSpecialEditId(null); setSpecialOldOrder(null); setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') }); }}>
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <Label>Date</Label>
-                  <Input 
-                    type="date" 
-                    value={specialForm.date} 
-                    onChange={(e) => setSpecialForm({...specialForm, date: e.target.value})}
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <div>
-                  <Label>Event Type</Label>
-                  <Input 
-                    type="text" 
-                    value={specialForm.eventType} 
-                    onChange={(e) => setSpecialForm({...specialForm, eventType: e.target.value})}
-                    placeholder="e.g. Birthday, Marriage"
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Sticks Taken</Label>
-                    <Input 
-                      type="number" 
-                      value={specialForm.stickQuantity} 
-                      onChange={(e) => setSpecialForm({...specialForm, stickQuantity: e.target.value})}
-                      placeholder="e.g. 50"
-                      className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                    />
-                  </div>
-                  <div>
-                    <Label>Pots Taken</Label>
-                    <Input 
-                      type="number" 
-                      value={specialForm.potQuantity} 
-                      onChange={(e) => setSpecialForm({...specialForm, potQuantity: e.target.value})}
-                      placeholder="e.g. 20"
-                      className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label>Amount Received (₹)</Label>
-                  <Input 
-                    type="number" 
-                    value={specialForm.amountReceived} 
-                    onChange={(e) => setSpecialForm({...specialForm, amountReceived: e.target.value})}
-                    placeholder="e.g. 5000"
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <div>
-                  <Label>Notes (Optional)</Label>
-                  <Input 
-                    type="text" 
-                    value={specialForm.notes} 
-                    onChange={(e) => setSpecialForm({...specialForm, notes: e.target.value})}
-                    placeholder="Any specific details"
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <Button className="w-full mt-4" onClick={handleSpecialSubmit}>
-                  {specialEditId ? 'Update Event Order' : 'Save Event Order'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-
-      {showProfitModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <Card className={`w-full max-w-md ${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white'}`}>
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{profitEditId ? 'Edit Profit Taken' : 'Log Profit Taken'}</h2>
-                <Button variant="ghost" size="sm" onClick={() => { setShowProfitModal(false); setProfitEditId(null); setProfitForm({ amount: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') }); }}>
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <Label>Date</Label>
-                  <Input 
-                    type="date" 
-                    value={profitForm.date} 
-                    onChange={(e) => setProfitForm({...profitForm, date: e.target.value})}
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <div>
-                  <Label>Amount (₹)</Label>
-                  <Input 
-                    type="number" 
-                    value={profitForm.amount} 
-                    onChange={(e) => setProfitForm({...profitForm, amount: e.target.value})}
-                    placeholder="e.g. 10000"
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <div>
-                  <Label>Notes (Optional)</Label>
-                  <Input 
-                    type="text" 
-                    value={profitForm.notes} 
-                    onChange={(e) => setProfitForm({...profitForm, notes: e.target.value})}
-                    placeholder="e.g. Monthly withdrawal"
-                    className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
-                  />
-                </div>
-                <Button className="w-full mt-4" onClick={handleProfitSubmit}>
-                  {profitEditId ? 'Update Profit Record' : 'Save Profit Record'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
     </div>
   );
 }
