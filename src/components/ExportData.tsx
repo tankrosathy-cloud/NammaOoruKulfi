@@ -32,7 +32,7 @@ export default function ExportData() {
         } catch {
           return false;
         }
-      }).sort((a, b) => b.date.localeCompare(a.date));
+      }).sort((a, b) => a.date.localeCompare(b.date));
 
       const filteredExpenses = allExpenses.filter(e => {
         try {
@@ -41,29 +41,29 @@ export default function ExportData() {
         } catch {
           return false;
         }
-      }).sort((a, b) => b.date.localeCompare(a.date));
+      }).sort((a, b) => a.date.localeCompare(b.date));
 
       // Prepare Daily Entries Data
       const entriesData = filteredEntries.map(e => ({
-        'Date': format(parseISO(e.date), 'dd MMM yyyy'),
-        'Actual Sales': e.actualAmount,
+        'Date': format(parseISO(e.date), 'dd-MMM'),
         'Stick Load': e.stickLoaded || 0,
-        'Stick Bal': e.stickBalance || 0,
-        'Stick Sold': e.stickSold || 0,
         'Pot Load': e.potLoaded || 0,
+        'Given Amt (Cash Bag Loaded)': e.cashBagLoaded || 0,
+        'Stick Bal': e.stickBalance || 0,
         'Pot Bal': e.potBalance || 0,
+        'Cash Bag (Total)': e.cashBagTotal || 0,
+        'PhonePe': e.phonePe || 0,
+        'Offer (Discount)': e.discount || 0,
+        'Stick Sold': e.stickSold || 0,
         'Pot Sold': e.potSold || 0,
         'Required Amt': e.requiredAmount || 0,
-        'Discount': e.discount || 0,
-        'PhonePe': e.phonePe || 0,
+        'Available Amt (Actual)': e.actualAmount,
         'Shortage': e.shortage || 0,
-        'Cash Bag Loaded': e.cashBagLoaded || 0,
-        'Cash Bag Total': e.cashBagTotal || 0,
-        'Bonus': e.bonus || 0,
-        'Final Handover': e.finalAmount || 0,
         'Notes': e.notes || '',
-        'Expense Details (Inside Entry)': e.expenseDetails || '',
-        'Daily Expenses': (e.expenses || 0) + (e.additionalExpenses || 0)
+        'Bonus': e.bonus || 0,
+        'Final Handover': (e.actualAmount || 0) - (e.cashBagLoaded || 0),
+        'Daily Expenses': (e.expenses || 0) + (e.additionalExpenses || 0),
+        'Expense Details': e.expenseDetails || ''
       }));
 
       // Prepare Other Expenses Data
@@ -107,11 +107,11 @@ export default function ExportData() {
           </div>
 
           <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
-            <Button variant="outline" size="sm" onClick={handlePrevMonth} className="h-8">Prev</Button>
+            <Button variant="outline" size="sm" onClick={handlePrevMonth} className="h-8 text-[10px] font-black text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 dark:text-indigo-400 dark:border-indigo-800/60 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 uppercase tracking-widest">Prev</Button>
             <span className="font-black uppercase tracking-widest text-slate-700 dark:text-slate-300">
               {format(currentDate, 'MMM yyyy')}
             </span>
-            <Button variant="outline" size="sm" onClick={handleNextMonth} className="h-8">Next</Button>
+            <Button variant="outline" size="sm" onClick={handleNextMonth} className="h-8 text-[10px] font-black text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 dark:text-indigo-400 dark:border-indigo-800/60 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 uppercase tracking-widest">Next</Button>
           </div>
 
           <Button 

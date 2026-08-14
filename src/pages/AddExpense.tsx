@@ -11,7 +11,7 @@ export default function AddExpense({ onSave, onCancel, initialExpense }: { onSav
   const [formData, setFormData] = useState({
     date: initialExpense?.date || new Date().toLocaleDateString('en-CA'),
     paidBy: initialExpense?.paidBy || 'Nadeem',
-    category: initialExpense?.category || 'Petrol/Fuel',
+    category: initialExpense?.category || 'Food',
     amount: initialExpense ? initialExpense.amount.toString() : '',
     notes: initialExpense?.notes || ''
   });

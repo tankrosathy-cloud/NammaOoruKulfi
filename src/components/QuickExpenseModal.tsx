@@ -37,7 +37,7 @@ const QUICK_TAGS: Record<string, string[]> = {
 export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: QuickExpenseModalProps) {
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Petrol/Fuel');
+  const [category, setCategory] = useState('Food');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [showSuccess, setShowSuccess] = useState(false);
@@ -47,7 +47,7 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
   useEffect(() => {
     if (isOpen) {
       setAmount('');
-      setCategory('Petrol/Fuel');
+      setCategory('Food');
       setNotes('');
       setDate(new Date().toLocaleDateString('en-CA'));
       setShowSuccess(false);
