@@ -9,9 +9,10 @@ import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 
 import { auth } from '../lib/firebase';
 import { InventoryStock } from '../types';
 import Planner from './Planner';
+import ExportData from '../components/ExportData';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
-  const [activeTab, setActiveTab] = useState<'settings' | 'inventory' | 'planner'>(role === 'owner' ? 'settings' : 'inventory');
+  const [activeTab, setActiveTab] = useState<'settings' | 'inventory' | 'planner' | 'export'>(role === 'owner' ? 'settings' : 'inventory');
 
   // Settings State
   const { settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
@@ -256,12 +257,10 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
 
   return (
     <div className="p-6 space-y-6 pb-32">
-      {activeTab !== 'planner' && (
-        <div>
-          <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">{role === 'owner' ? 'Admin' : 'Inventory'}</h2>
-          <p className="text-slate-750 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">{role === 'owner' ? 'Manage App & Stock' : 'Global Stock Levels'}</p>
-        </div>
-      )}
+      <div>
+        <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">{role === 'owner' ? 'Admin' : 'Inventory'}</h2>
+        <p className="text-slate-750 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">{role === 'owner' ? 'Manage App & Stock' : 'Global Stock Levels'}</p>
+      </div>
 
       {role === 'owner' && (
         <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800">
@@ -282,6 +281,12 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
             className={`flex-1 h-10 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${activeTab === 'planner' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
           >
             Planner
+          </button>
+          <button
+            onClick={() => setActiveTab('export')}
+            className={`flex-1 h-10 rounded-lg text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${activeTab === 'export' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+          >
+            Export
           </button>
         </div>
       )}
@@ -648,6 +653,10 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       )}
       {activeTab === 'planner' && (
         <Planner />
+      )}
+
+      {activeTab === 'export' && (
+        <ExportData />
       )}
 
     

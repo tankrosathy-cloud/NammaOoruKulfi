@@ -119,9 +119,32 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 const DEFAULT_INVENTORY: InventoryStock = {
   id: 'global',
-  stickQuantity: 0,
-  potQuantity: 0,
-  lastUpdatedDate: new Date().toISOString().split('T')[0]
+  stickQuantity: 784,
+  potQuantity: 48,
+  lastUpdatedDate: new Date().toISOString().split('T')[0],
+  stickFlavours: [
+    { name: 'Mango malai', quantity: 115 },
+    { name: 'Kesar Badam', quantity: 83 },
+    { name: 'Kesar pista', quantity: 48 },
+    { name: 'Black current', quantity: 25 },
+    { name: 'Guava', quantity: 33 },
+    { name: 'Strawberry', quantity: 56 },
+    { name: 'Shahi gulab', quantity: 99 },
+    { name: 'Coconut', quantity: 36 },
+    { name: 'Gulkand', quantity: 20 },
+    { name: 'Chocolate', quantity: 108 },
+    { name: 'Dry fruit', quantity: 21 },
+    { name: 'Malai', quantity: 45 },
+    { name: 'Blue berry', quantity: 48 },
+    { name: 'Kesar kajoor', quantity: 24 },
+    { name: 'Pista badam', quantity: 22 }
+  ],
+  potFlavours: [
+    { name: 'Badam', quantity: 0 },
+    { name: 'Pistha', quantity: 12 },
+    { name: 'Pistha badam', quantity: 12 },
+    { name: 'Shahi gulab', quantity: 24 }
+  ]
 };
 
 export async function getInventoryStock(): Promise<InventoryStock> {
@@ -133,6 +156,9 @@ export async function getInventoryStock(): Promise<InventoryStock> {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       return docSnap.data() as InventoryStock;
+    } else {
+      await setDoc(docRef, { ...DEFAULT_INVENTORY, userId: user.uid });
+      return DEFAULT_INVENTORY;
     }
   } catch (error) {
     console.error("Error fetching inventory stock:", error);
@@ -249,7 +275,7 @@ const StoreContext = createContext<StoreState | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
-  const [entriesLimit, setEntriesLimit] = useState(200);
+  const [entriesLimit, setEntriesLimit] = useState(1000);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -260,7 +286,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(true);
-  const [expensesLimit, setExpensesLimit] = useState(200);
+  const [expensesLimit, setExpensesLimit] = useState(1000);
   const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
 
   useEffect(() => {

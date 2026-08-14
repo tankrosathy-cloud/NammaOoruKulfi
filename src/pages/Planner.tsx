@@ -126,7 +126,7 @@ export default function Planner() {
   const cardBg = isDark ? 'bg-[#111827]/60 border-slate-800' : 'bg-white border-slate-200';
 
   return (
-    <div className="p-6 space-y-6 pb-32">
+    <div className="space-y-6 pb-32">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

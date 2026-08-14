@@ -20,6 +20,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [viewEntry, setViewEntry] = useState<any | null>(null);
+  const [activeListTab, setActiveListTab] = useState<'entries' | 'expenses'>('entries');
 
   const { filteredEntries, filteredExpenses, chartData, totals } = useMemo(() => {
     const start = startOfMonth(currentDate);
@@ -55,7 +56,6 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
         acc.revenue += netSales;
         acc.expenses += totalExp;
         acc.shortage += (e.shortage || 0);
-        acc.finalAmount += (netSales - totalExp);
         acc.stickSold += (e.stickSold || 0);
         acc.potSold += (e.potSold || 0);
         return acc;
@@ -67,9 +67,11 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
     if (isOwner) {
       filteredExps.forEach(exp => {
           totals.expenses += exp.amount;
-          totals.finalAmount -= exp.amount;
       });
     }
+
+    // Calculate Net Savings: Total Revenue - Total Expenses
+    totals.finalAmount = totals.revenue - totals.expenses;
 
 
     return { filteredEntries: filtered, filteredExpenses: filteredExps, chartData, totals };
@@ -204,9 +206,49 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
         </Card>
       )}
 
-      <div>
-        <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-4">Daily Entries</h3>
-        {filteredEntries.length === 0 ? (
+      <div className="flex gap-3 mb-6">
+        <button 
+          onClick={() => setActiveListTab('entries')}
+          className={`flex-1 p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
+            activeListTab === 'entries' 
+              ? isDark ? 'bg-cyan-500/20 border-cyan-500/50 shadow-lg' : 'bg-cyan-50 border-cyan-200 shadow-md' 
+              : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
+          }`}
+        >
+          <div className="relative z-10">
+            <h3 className={`text-[10px] font-black uppercase tracking-widest mb-1 ${
+              activeListTab === 'entries' ? 'text-cyan-600 dark:text-cyan-400' : 'text-slate-500'
+            }`}>Daily Entries</h3>
+            <p className={`text-lg font-black ${
+              activeListTab === 'entries' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
+            }`}>{filteredEntries.length} <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Records</span></p>
+          </div>
+        </button>
+
+        {isOwner && (
+          <button 
+            onClick={() => setActiveListTab('expenses')}
+            className={`flex-1 p-3 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden cursor-pointer ${
+              activeListTab === 'expenses' 
+                ? isDark ? 'bg-pink-500/20 border-pink-500/50 shadow-lg' : 'bg-pink-50 border-pink-200 shadow-md' 
+                : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100' : 'bg-white border-slate-100 opacity-60 hover:opacity-100'
+            }`}
+          >
+            <div className="relative z-10">
+              <h3 className={`text-[10px] font-black uppercase tracking-widest mb-1 ${
+                activeListTab === 'expenses' ? 'text-pink-600 dark:text-pink-400' : 'text-slate-500'
+              }`}>Other Expenses</h3>
+              <p className={`text-lg font-black ${
+                activeListTab === 'expenses' ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
+              }`}>{filteredExpenses.length} <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Records</span></p>
+            </div>
+          </button>
+        )}
+      </div>
+
+      {activeListTab === 'entries' && (
+        <div>
+          {filteredEntries.length === 0 ? (
           <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No entries for this month.</p>
         ) : (
           <div className="space-y-4">
@@ -285,10 +327,10 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
           </div>
         )}
       </div>
+      )}
 
-      {isOwner && (
+      {isOwner && activeListTab === 'expenses' && (
         <div>
-          <h3 className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-4 mt-8">Other Expenses</h3>
           {filteredExpenses.length === 0 ? (
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-200/80 dark:border-slate-800">No expenses for this month.</p>
           ) : (

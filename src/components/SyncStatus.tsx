@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { onSnapshotsInSync } from 'firebase/firestore';
+import { onSnapshotsInSync, disableNetwork, enableNetwork } from 'firebase/firestore';
 
 export default function SyncStatus() {
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -13,6 +13,7 @@ export default function SyncStatus() {
       // When coming back online, indicate that we are syncing pending offline operations
       setIsSyncing(true);
     };
+
     const handleOffline = () => {
       setIsOnline(false);
       setIsSyncing(false);
@@ -40,18 +41,34 @@ export default function SyncStatus() {
         setIsSyncing(true);
       }
     };
+
     window.addEventListener('firestore-write-start', handleWriteStart);
     return () => window.removeEventListener('firestore-write-start', handleWriteStart);
   }, [isOnline]);
 
+  const handleForceSync = async () => {
+    if (!isOnline) return;
+    setIsSyncing(true);
+    try {
+      await disableNetwork(db);
+      await enableNetwork(db);
+    } catch (e) {
+      console.error('Force sync failed', e);
+      setIsSyncing(false);
+    }
+  };
+
   return (
-    <div className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all duration-300 border ${
+    <button 
+      onClick={handleForceSync}
+      disabled={!isOnline || isSyncing}
+      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all duration-300 border cursor-pointer ${
       !isOnline
         ? 'bg-amber-500/10 border-amber-500/20 text-amber-500 animate-pulse'
         : isSyncing
           ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-500'
-          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-    }`} title={!isOnline ? "Offline Mode" : isSyncing ? "Syncing data..." : "Live Synced"}>
+          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20'
+    }`} title={!isOnline ? "Offline Mode" : isSyncing ? "Syncing data..." : "Click to Force Sync"}>
       {!isOnline ? (
         <>
           <CloudOff className="w-3.5 h-3.5" />
@@ -65,9 +82,10 @@ export default function SyncStatus() {
       ) : (
         <>
           <Cloud className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Live Synced</span>
+          <span className="hidden sm:inline">Force Sync</span>
         </>
       )}
-    </div>
+    </button>
   );
 }
+
