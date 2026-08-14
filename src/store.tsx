@@ -568,7 +568,7 @@ export function useSpecialOrders() {
   return { specialOrders: ctx.specialOrders, loading: ctx.specialOrdersLoading };
 }
 
-export function useLogs() {
+export function useLogs(limitCount: number = 100) {
   const [logs, setLogs] = useState<AppLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -580,7 +580,7 @@ export function useLogs() {
       return;
     }
     // ADDED limit(100) TO OPTIMIZE LOGS READS
-    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(100));
+    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(limitCount));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
       setLogs(docs);
@@ -591,7 +591,7 @@ export function useLogs() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [limitCount]);
 
   return { logs, loading };
 }

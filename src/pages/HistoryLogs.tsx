@@ -7,7 +7,8 @@ import { Button } from '../components/ui/button';
 import { AppLog } from '../types';
 
 export default function HistoryLogs() {
-  const { logs, loading } = useLogs();
+  const [limitCount, setLimitCount] = useState(10);
+  const { logs, loading } = useLogs(limitCount);
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -118,6 +119,17 @@ export default function HistoryLogs() {
               </CardContent>
             </Card>
           ))}
+          {logs.length >= limitCount && (
+            <div className="flex justify-center pt-6 pb-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setLimitCount(prev => prev + 10)}
+                className="rounded-full px-6 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:border-cyan-500/30 transition-all"
+              >
+                Load More
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

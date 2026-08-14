@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useEntries, useSettings, useExpenses, useInventory } from '../store';
+import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency } from '../lib/utils';
 import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X } from 'lucide-react';
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const { entries, loading: entriesLoading, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading } = useExpenses();
+  const { specialOrders } = useSpecialOrders();
   const { inventory, loading: inventoryLoading } = useInventory();
   const loading = entriesLoading || expensesLoading || inventoryLoading;
   const { settings } = useSettings();
@@ -105,6 +106,28 @@ export default function Dashboard() {
         }
       } catch (err) {}
     });
+
+    // Add special orders profit (event orders)
+    specialOrders.forEach(order => {
+      const revenue = order.amountReceived || 0;
+      lifetimeRevenue += revenue;
+
+      if (order.date === todayStr) {
+        todayRevenue += revenue;
+      }
+
+      try {
+        const date = parseISO(order.date);
+        
+        if (isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd })) {
+          monthlyRevenue += revenue;
+        }
+        
+        if (isWithinInterval(date, { start: currentWeekStart, end: currentWeekEnd })) {
+          weekRevenue += revenue;
+        }
+      } catch (err) {}
+    });
     
     const last7DaysEntries = sorted.slice(0, 7).reverse();
     const chartData = last7DaysEntries.map(e => ({
@@ -125,12 +148,36 @@ export default function Dashboard() {
       })
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const monthlySalesTrend = currentMonthEntries.map(e => {
+    // Combine special orders with current month entries for sales trend
+    const currentMonthSpecials = specialOrders.filter(e => {
+      try {
+        const date = parseISO(e.date);
+        return isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd });
+      } catch {
+        return false;
+      }
+    });
+    
+    // Group sales by date
+    const salesByDate: Record<string, number> = {};
+    
+    currentMonthEntries.forEach(e => {
+      const dateKey = format(parseISO(e.date), 'dd MMM');
       const sales = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
-      return {
-        date: format(parseISO(e.date), 'dd MMM'),
-        Sales: sales
-      };
+      salesByDate[dateKey] = (salesByDate[dateKey] || 0) + sales;
+    });
+    
+    currentMonthSpecials.forEach(order => {
+      const dateKey = format(parseISO(order.date), 'dd MMM');
+      salesByDate[dateKey] = (salesByDate[dateKey] || 0) + order.amountReceived;
+    });
+
+    const trendDates = Array.from(new Set([...currentMonthEntries.map(e => e.date), ...currentMonthSpecials.map(e => e.date)]));
+    trendDates.sort();
+    
+    const monthlySalesTrend = trendDates.map(dateStr => {
+       const dateKey = format(parseISO(dateStr), 'dd MMM');
+       return { date: dateKey, Sales: salesByDate[dateKey] || 0 };
     });
 
     // Current Month Expense Distribution
@@ -180,7 +227,7 @@ export default function Dashboard() {
       monthlySalesTrend,
       expenseDistribution
     };
-  }, [entries, expenses]);
+  }, [entries, expenses, specialOrders]);
 
   
   const inventoryStats = useMemo(() => {
