@@ -462,7 +462,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setEntries(docs.sort((a, b) => b.date.localeCompare(a.date)));
       setHasMoreEntries(docs.length >= entriesLimit);
       setEntriesLoading(false);
-    });
+    }, (err) => console.error("Error fetching entries in realtime:", err));
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) {

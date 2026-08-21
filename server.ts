@@ -1,8 +1,6 @@
 import express from "express";
 import path from "path";
 import multer from "multer";
-import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
@@ -21,6 +19,7 @@ async function startServer() {
          return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
       }
 
+      const { GoogleGenAI, Type } = await import("@google/genai");
       const ai = new GoogleGenAI({ 
         apiKey: process.env.GEMINI_API_KEY,
         httpOptions: {
@@ -88,6 +87,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

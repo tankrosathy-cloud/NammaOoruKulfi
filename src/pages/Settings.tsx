@@ -10,6 +10,7 @@ import { auth } from '../lib/firebase';
 import { InventoryStock } from '../types';
 import Planner from './Planner';
 import ExportData from '../components/ExportData';
+import MigrateLocalData from '../components/MigrateLocalData';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
   const [activeTab, setActiveTab] = useState<'settings' | 'inventory' | 'planner' | 'export'>(role === 'owner' ? 'settings' : 'inventory');
@@ -557,7 +558,10 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       )}
 
       {activeTab === 'export' && (
-        <ExportData />
+        <>
+          <ExportData />
+          <MigrateLocalData />
+        </>
       )}
 
     
