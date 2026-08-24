@@ -1,14 +1,16 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { formatCurrency } from '../lib/utils';
-import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X } from 'lucide-react';
+import { formatCurrency, isDateInMonth } from '../lib/utils';
+import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X, MessageCircle } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { useWeather } from '../lib/useWeather';
 import { calculatePrediction } from '../lib/prediction';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from 'motion/react';
+import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import { calculateAvailableStock } from '../lib/inventoryUtils';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -33,8 +35,10 @@ const itemVariants = {
 };
 
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (date: string) => void }) {
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [activeDayView, setActiveDayView] = useState<'today' | 'latest'>('today');
   const { entries, loading: entriesLoading, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading } = useExpenses();
   const { specialOrders } = useSpecialOrders();
@@ -82,9 +86,10 @@ export default function Dashboard() {
     let monthlyExpenses = 0;
     let monthlyShortage = 0;
 
+    const todayDate = new Date();
     entries.forEach(e => {
       const revenue = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
-      const expenses = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
+      const exp = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
       
       lifetimeRevenue += revenue;
       
@@ -92,20 +97,21 @@ export default function Dashboard() {
         todayRevenue += revenue;
       }
       
+      if (isDateInMonth(e.date, todayDate)) {
+        monthlyRevenue += revenue;
+        monthlyExpenses += exp;
+        monthlyShortage += (e.shortage || 0);
+      }
+      
       try {
         const date = parseISO(e.date);
-        
-        if (isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd })) {
-          monthlyRevenue += revenue;
-          monthlyExpenses += expenses;
-          monthlyShortage += (e.shortage || 0);
-        }
-        
         if (isWithinInterval(date, { start: currentWeekStart, end: currentWeekEnd })) {
           weekRevenue += revenue;
         }
       } catch (err) {}
     });
+
+    const latestRevenue = latest ? Math.max(0, latest.actualAmount - (latest.cashBagLoaded || 0) + (latest.expenses || 0) + (latest.additionalExpenses || 0) + (latest.bonus || 0)) : 0;
 
     // Add special orders profit (event orders)
     specialOrders.forEach(order => {
@@ -116,13 +122,12 @@ export default function Dashboard() {
         todayRevenue += revenue;
       }
 
+      if (isDateInMonth(order.date, todayDate)) {
+        monthlyRevenue += revenue;
+      }
+
       try {
         const date = parseISO(order.date);
-        
-        if (isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd })) {
-          monthlyRevenue += revenue;
-        }
-        
         if (isWithinInterval(date, { start: currentWeekStart, end: currentWeekEnd })) {
           weekRevenue += revenue;
         }
@@ -138,25 +143,11 @@ export default function Dashboard() {
 
     // Current Month Daily Sales Trend
     const currentMonthEntries = entries
-      .filter(e => {
-        try {
-          const date = parseISO(e.date);
-          return isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd });
-        } catch {
-          return false;
-        }
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .filter(e => isDateInMonth(e.date, todayDate))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     // Combine special orders with current month entries for sales trend
-    const currentMonthSpecials = specialOrders.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd });
-      } catch {
-        return false;
-      }
-    });
+    const currentMonthSpecials = specialOrders.filter(e => isDateInMonth(e.date, todayDate));
     
     // Group sales by date
     const salesByDate: Record<string, number> = {};
@@ -184,13 +175,10 @@ export default function Dashboard() {
     const expenseCategoriesMap: Record<string, number> = {};
 
     expenses.forEach(e => {
-      try {
-        const date = parseISO(e.date);
-        if (isWithinInterval(date, { start: currentMonthStart, end: currentMonthEnd })) {
-          const category = e.category || 'Others';
-          expenseCategoriesMap[category] = (expenseCategoriesMap[category] || 0) + e.amount;
-        }
-      } catch (err) {}
+      if (isDateInMonth(e.date, todayDate)) {
+        const category = e.category || 'Others';
+        expenseCategoriesMap[category] = (expenseCategoriesMap[category] || 0) + e.amount;
+      }
     });
 
     // Sum up daily entries' operational expenses
@@ -216,6 +204,7 @@ export default function Dashboard() {
 
     return {
       latest,
+      latestRevenue,
       todayRevenue,
       weekRevenue,
       monthlyRevenue,
@@ -231,33 +220,8 @@ export default function Dashboard() {
 
   
   const inventoryStats = useMemo(() => {
-    const relevantEntries = inventory?.lastUpdatedDate
-      ? entries.filter(e => e.date >= inventory.lastUpdatedDate)
-      : entries;
-    const totalStickSoldSinceUpdate = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-    const totalPotSoldSinceUpdate = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
-    const availableStick = Math.max(0, (inventory?.stickQuantity || 0) - totalStickSoldSinceUpdate);
-    const availablePot = Math.max(0, (inventory?.potQuantity || 0) - totalPotSoldSinceUpdate);
-    
-    const now = new Date();
-    const currentMonthStartStr = format(startOfMonth(now), 'yyyy-MM-dd');
-    const currentMonthEndStr = format(endOfMonth(now), 'yyyy-MM-dd');
-    const thisMonthEntries = entries.filter(e => e.date >= currentMonthStartStr && e.date <= currentMonthEndStr);
-    
-    const totalStickSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-    const totalPotSoldThisMonth = thisMonthEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
-    const avgStickSoldThisMonth = thisMonthEntries.length > 0 ? Math.round(totalStickSoldThisMonth / thisMonthEntries.length) : 0;
-    const avgPotSoldThisMonth = thisMonthEntries.length > 0 ? Math.round(totalPotSoldThisMonth / thisMonthEntries.length) : 0;
-
-    return {
-      totalStickSoldThisMonth,
-      totalPotSoldThisMonth,
-      avgStickSoldThisMonth,
-      avgPotSoldThisMonth,
-      availableStick,
-      availablePot
-    };
-  }, [entries, inventory]);
+    return calculateAvailableStock(inventory, entries, specialOrders);
+  }, [entries, inventory, specialOrders]);
 
   const nextDaySuggestion = useMemo(() => {
     const result = calculatePrediction(entries, isWeekend, isHoliday, weatherCondition, 'normal', tomorrowStr);
@@ -337,12 +301,81 @@ export default function Dashboard() {
         )}
       </motion.div>
 
+      {latest && (
+        <motion.div variants={itemVariants}>
+          <div className={`p-4 rounded-2xl border ${
+            isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-gradient-to-r from-cyan-500/5 via-pink-500/5 to-emerald-500/5 border-slate-200 shadow-sm'
+          } flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-black shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Latest Recorded Entry</span>
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                    latest.date === todayStr ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {latest.date === todayStr ? 'Today' : format(parseISO(latest.date), 'dd MMM yyyy')}
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-0.5">
+                  Stick: <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{latest.stickSold || 0} pcs</span> | Pot: <span className="text-pink-600 dark:text-pink-400 font-extrabold">{latest.potSold || 0} pcs</span> | Actual Cash: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{formatCurrency(latest.actualAmount)}</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {latest.shortage ? (
+                <div className="text-left sm:text-right mr-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-500">Shortage</span>
+                  <p className="text-xs font-black text-orange-500">{formatCurrency(latest.shortage)}</p>
+                </div>
+              ) : latest.excess ? (
+                <div className="text-left sm:text-right mr-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-500">Excess</span>
+                  <p className="text-xs font-black text-emerald-500">{formatCurrency(latest.excess)}</p>
+                </div>
+              ) : null}
+              {onNavigateToEntry && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateToEntry(latest.date)}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
+                >
+                  View / Edit
+                </button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <motion.div variants={itemVariants}>
           <Card className={cardBg}>
             <CardContent className="p-4 flex flex-col justify-center">
-              <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-600 dark:text-cyan-400`}>Today</p>
-              <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">{formatCurrency(stats.todayRevenue)}</div>
+              <div className="flex items-center justify-between mb-1">
+                <p className={`text-[10px] font-bold uppercase tracking-widest text-cyan-600 dark:text-cyan-400`}>
+                  {activeDayView === 'today' ? 'Today' : `Latest (${latest ? format(parseISO(latest.date), 'dd MMM') : 'Day'})`}
+                </p>
+                {latest && latest.date !== todayStr && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDayView(prev => prev === 'today' ? 'latest' : 'today')}
+                    className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20 uppercase tracking-tight transition-colors"
+                  >
+                    {activeDayView === 'today' ? `See ${format(parseISO(latest.date), 'dd MMM')}` : 'See Today'}
+                  </button>
+                )}
+              </div>
+              <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">
+                {formatCurrency(activeDayView === 'today' ? stats.todayRevenue : stats.latestRevenue)}
+              </div>
+              {activeDayView === 'today' && stats.todayRevenue === 0 && latest && latest.date !== todayStr && (
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-1 truncate">
+                  Latest: {formatCurrency(stats.latestRevenue)} ({format(parseISO(latest.date), 'dd MMM')})
+                </p>
+              )}
             </CardContent>
           </Card>
         </motion.div>
@@ -814,13 +847,23 @@ export default function Dashboard() {
                 }`}>
                   <Package className="w-5 h-5 text-cyan-500" /> Latest Inventory
                 </CardTitle>
-                <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider ${
-                  isDark 
-                    ? 'text-cyan-100 bg-cyan-900/30 border border-cyan-800' 
-                    : 'text-cyan-700 bg-cyan-50 border border-cyan-100'
-                }`}>
-                  {format(parseISO(latest.date), 'MMM dd, yyyy')}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowWhatsAppModal(true)}
+                    className="flex items-center gap-1.5 text-[10px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors cursor-pointer shadow-sm"
+                    title="Share daily closing summary on WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Share</span>
+                  </button>
+                  <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-wider ${
+                    isDark 
+                      ? 'text-cyan-100 bg-cyan-900/30 border border-cyan-800' 
+                      : 'text-cyan-700 bg-cyan-50 border border-cyan-100'
+                  }`}>
+                    {format(parseISO(latest.date), 'MMM dd, yyyy')}
+                  </span>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -852,6 +895,15 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </motion.div>
+      )}
+      {latest && (
+        <WhatsAppSummaryModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          entry={latest}
+          inventory={inventory}
+          settings={settings}
+        />
       )}
     </motion.div>
   );

@@ -117,8 +117,8 @@ function AppShellContent() {
         </div>
       </header>
       
-      <main className="flex-1 overflow-y-auto pb-24">
-        {activeTab === 'dashboard' && role === 'owner' && <Dashboard />}
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+        {activeTab === 'dashboard' && role === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
         {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={role} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}

@@ -1,3 +1,13 @@
+export interface Denominations {
+  n500: number;
+  n200: number;
+  n100: number;
+  n50: number;
+  n20: number;
+  n10: number;
+  coins: number;
+}
+
 export interface DailyEntry {
   id: string;
   date: string; // YYYY-MM-DD
@@ -27,12 +37,17 @@ export interface DailyEntry {
   additionalExpenses?: number;
   expenseDetails?: string;
   
+  denominations?: Denominations;
+
   notes: string;
+  userId?: string;
+  updatedAt?: string;
 }
 
 export interface Settings {
   stickPrice: number;
   potPrice: number;
+  platePrice?: number;
   monthlyGoal?: number;
 }
 
@@ -43,6 +58,8 @@ export interface InventoryStock {
   lastUpdatedDate?: string;
   stickFlavours?: { name: string; quantity: number }[];
   potFlavours?: { name: string; quantity: number }[];
+  userId?: string;
+  updatedAt?: string;
 }
 
 export interface ExpenseEntry {
@@ -52,6 +69,9 @@ export interface ExpenseEntry {
   category: string;
   amount: number;
   notes: string;
+  title?: string;
+  userId?: string;
+  updatedAt?: string;
 }
 
 export interface ProfitWithdrawal {
@@ -59,8 +79,11 @@ export interface ProfitWithdrawal {
   date: string; // YYYY-MM-DD
   amount: number;
   notes: string;
+  withdrawnBy?: string;
+  month?: string;
+  userId?: string;
+  updatedAt?: string;
 }
-
 
 export interface SpecialOrder {
   id: string;
@@ -70,10 +93,11 @@ export interface SpecialOrder {
   potQuantity: number;
   amountReceived: number;
   notes: string;
+  userId?: string;
+  updatedAt?: string;
 }
 
 export interface AppLog {
-
   id: string;
   timestamp: string;
   userEmail: string;

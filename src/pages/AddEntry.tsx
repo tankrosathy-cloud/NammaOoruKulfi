@@ -1,22 +1,41 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { DailyEntry } from '../types';
-import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory } from '../store';
-import { format } from 'date-fns';
+import { DailyEntry, Denominations } from '../types';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders } from '../store';
+import { format, subDays, parseISO } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, MessageCircle, Share2, CheckCircle2 } from 'lucide-react';
+import CashReconciliationCard from '../components/CashReconciliationCard';
+import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import { calculateAvailableStock } from '../lib/inventoryUtils';
+
+const DEFAULT_DENOMS: Denominations = {
+  n500: 0,
+  n200: 0,
+  n100: 0,
+  n50: 0,
+  n20: 0,
+  n10: 0,
+  coins: 0
+};
 
 export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: () => void, onCancel?: () => void, initialDate?: string, key?: string }) {
   const { settings } = useSettings();
   const { entries } = useEntries();
   const { inventory } = useInventory();
+  const { specialOrders } = useSpecialOrders();
   const [loading, setLoading] = useState(false);
   const [date, setDate] = useState(initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [entryId, setEntryId] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [appliedFromDenomsFeedback, setAppliedFromDenomsFeedback] = useState<string | null>(null);
+
+  // Date-wise Denominations State
+  const [denominations, setDenominations] = useState<Denominations>(DEFAULT_DENOMS);
 
   // Pre-fill previous balances if any
   const [prevBalances, setPrevBalances] = useState({ stick: 0, pot: 0 });
@@ -32,6 +51,8 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   useEffect(() => {
     if (!entries) return;
     const existingEntry = entries.find(e => e.date === date);
+    let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
+
     if (existingEntry) {
       setIsEditing(true);
       setEntryId(existingEntry.id);
@@ -49,6 +70,35 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         bonus: (existingEntry.bonus ?? '').toString(),
         notes: existingEntry.notes ?? ''
       });
+
+      if (existingEntry.denominations) {
+        loadedDenoms = {
+          n500: Number(existingEntry.denominations.n500) || 0,
+          n200: Number(existingEntry.denominations.n200) || 0,
+          n100: Number(existingEntry.denominations.n100) || 0,
+          n50: Number(existingEntry.denominations.n50) || 0,
+          n20: Number(existingEntry.denominations.n20) || 0,
+          n10: Number(existingEntry.denominations.n10) || 0,
+          coins: Number(existingEntry.denominations.coins) || 0
+        };
+      } else {
+        // Fallback to local draft cache for this date
+        try {
+          const cached = localStorage.getItem(`kulfi_denoms_${date}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            loadedDenoms = {
+              n500: Number(parsed.n500) || 0,
+              n200: Number(parsed.n200) || 0,
+              n100: Number(parsed.n100) || 0,
+              n50: Number(parsed.n50) || 0,
+              n20: Number(parsed.n20) || 0,
+              n10: Number(parsed.n10) || 0,
+              coins: Number(parsed.coins) || 0
+            };
+          }
+        } catch {}
+      }
     } else {
       setIsEditing(false);
       setEntryId(uuidv4());
@@ -59,7 +109,27 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
         notes: ''
       });
+
+      // Check draft denominations cache for this new date
+      try {
+        const cached = localStorage.getItem(`kulfi_denoms_${date}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          loadedDenoms = {
+            n500: Number(parsed.n500) || 0,
+            n200: Number(parsed.n200) || 0,
+            n100: Number(parsed.n100) || 0,
+            n50: Number(parsed.n50) || 0,
+            n20: Number(parsed.n20) || 0,
+            n10: Number(parsed.n10) || 0,
+            coins: Number(parsed.coins) || 0
+          };
+        }
+      } catch {}
     }
+
+    setDenominations(loadedDenoms);
+    setAppliedFromDenomsFeedback(null);
 
     const prevEntry = [...entries]
       .filter(e => e.date < date)
@@ -75,14 +145,24 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     }
   }, [date, entries]);
 
-  // Find previous balances (the entry with the largest date that is strictly less than current date)
-  const relevantEntries = inventory.lastUpdatedDate
-    ? entries.filter(e => e.date >= inventory.lastUpdatedDate)
-    : entries;
-  const totalStickSold = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
-  const totalPotSold = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
-  const availableStick = Math.max(0, (inventory.stickQuantity || 0) - totalStickSold);
-  const availablePot = Math.max(0, (inventory.potQuantity || 0) - totalPotSold);
+  const handleDenominationsChange = (newDenoms: Denominations) => {
+    setDenominations(newDenoms);
+    try {
+      localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(newDenoms));
+    } catch (e) {
+      console.warn('Failed to save draft denominations to localStorage', e);
+    }
+  };
+
+  const handleApplyCashBagTotal = (total: number) => {
+    setFormData(prev => ({ ...prev, cashBagTotal: String(total) }));
+    setAppliedFromDenomsFeedback(`Applied ₹${total.toLocaleString('en-IN')} from Currency Denominations`);
+    setTimeout(() => setAppliedFromDenomsFeedback(null), 6000);
+  };
+
+  const { availableStick, availablePot } = useMemo(() => {
+    return calculateAvailableStock(inventory, entries, specialOrders);
+  }, [inventory, entries, specialOrders]);
 
   // Suggested load calculation based on recent average sales
   const suggestedLoad = useMemo(() => {
@@ -156,8 +236,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     e.preventDefault();
     setLoading(true);
 
+    const safeId = entryId && entryId.trim() !== '' ? entryId : uuidv4();
     const entry: DailyEntry = {
-      id: entryId,
+      id: safeId,
       date,
       stickLoaded: parseInt(formData.stickLoaded) || 0,
       ...(formData.stickBalance !== '' ? { stickBalance: parseInt(formData.stickBalance) } : {}),
@@ -177,26 +258,175 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
       expenses: platformRent,
       additionalExpenses: parseInt(formData.additionalExpenses) || 0,
       expenseDetails: formData.expenseDetails,
-      notes: formData.notes
+      notes: formData.notes,
+      denominations
     };
 
-    await saveEntry(entry);
-    setLoading(false);
-    onSave();
+    try {
+      await saveEntry(entry);
+      try {
+        localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+      } catch {}
+      setLoading(false);
+      onSave();
+    } catch (err: any) {
+      setLoading(false);
+      alert('Failed to save entry: ' + (err.message || err));
+    }
   };
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const sortedEntries = useMemo(() => {
+    return [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  }, [entries]);
+  const latestLoggedEntry = sortedEntries[0];
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">{isEditing ? 'Edit Entry' : 'Add Entry'}</h2>
-        <p className="text-slate-700 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest">{isEditing ? `Editing metrics for ${date}` : "Enter today's closing metrics"}</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-3xl font-black tracking-tighter uppercase text-slate-900 dark:text-white">
+              {isEditing ? 'Job Entry' : 'New Job Entry'}
+            </h2>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+              isEditing ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30' : 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30'
+            }`}>
+              {isEditing ? 'Saved Record' : 'Draft'}
+            </span>
+          </div>
+          <p className="text-slate-700 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest mt-0.5">
+            {isEditing ? `Viewing & Editing metrics for ${format(parseISO(date), 'dd MMM yyyy')}` : `Entering closing metrics for ${format(parseISO(date), 'dd MMM yyyy')}`}
+          </p>
+        </div>
+
+        {/* Quick Date Switcher Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setDate(todayStr)}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all ${
+              date === todayStr
+                ? 'bg-cyan-500 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Today {entries.some(e => e.date === todayStr) ? '✓' : ''}
+          </button>
+          
+          {sortedEntries.slice(0, 4).map(e => (
+            <button
+              key={e.id || e.date}
+              type="button"
+              onClick={() => setDate(e.date)}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all flex items-center gap-1 ${
+                date === e.date
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span>{format(parseISO(e.date), 'dd MMM')}</span>
+              <span className="text-[9px] opacity-80">✓</span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* Status banner when viewing today but previous day has data */}
+      {date === todayStr && !isEditing && latestLoggedEntry && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 via-cyan-500/10 to-transparent border border-purple-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-purple-600 dark:text-purple-400">
+                Latest Saved Entry: {format(parseISO(latestLoggedEntry.date), 'dd MMM yyyy')}
+              </span>
+            </div>
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">
+              Stick: <span className="font-black text-cyan-600 dark:text-cyan-400">{latestLoggedEntry.stickSold || 0} pcs</span> | Pot: <span className="font-black text-pink-600 dark:text-pink-400">{latestLoggedEntry.potSold || 0} pcs</span> | Cash: <span className="font-black text-emerald-600 dark:text-emerald-400">₹{latestLoggedEntry.actualAmount || 0}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDate(latestLoggedEntry.date)}
+            className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
+          >
+            View / Edit {format(parseISO(latestLoggedEntry.date), 'dd MMM')}
+          </button>
+        </div>
+      )}
+
+      {/* Status banner when editing an existing saved record */}
+      {isEditing && (
+        <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
+            <div>
+              <p className="text-xs font-black text-purple-700 dark:text-purple-300">
+                Editing Record for {format(parseISO(date), 'dd MMMM yyyy')}
+              </p>
+              <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                Previously saved: Stick Sold ({formData.stickLoaded ? parseInt(formData.stickLoaded) - (parseInt(formData.stickBalance) || 0) : 0}), Cash Total (₹{formData.cashBagTotal || '0'}), UPI (₹{formData.phonePe || '0'})
+              </p>
+            </div>
+          </div>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6 pb-8">
         <Card>
           <CardContent className="p-6 space-y-6">
             <div className="space-y-2">
-              <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Date</Label>
+              <div className="flex justify-between items-center">
+                <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Date</Label>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
+                      date === format(new Date(), 'yyyy-MM-dd')
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDate(format(subDays(new Date(), 1), 'yyyy-MM-dd'))}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
+                      date === format(subDays(new Date(), 1), 'yyyy-MM-dd')
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    Yesterday
+                  </button>
+                  {entries.length > 0 && entries[0].date && (
+                    <button
+                      type="button"
+                      onClick={() => setDate(entries[0].date)}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
+                        date === entries[0].date
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                      title={`Jump to latest logged entry (${entries[0].date})`}
+                    >
+                      Latest ({format(parseISO(entries[0].date), 'dd MMM')})
+                    </button>
+                  )}
+                </div>
+              </div>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
 
@@ -268,8 +498,22 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                     <Input name="cashBagLoaded" type="text" inputMode="numeric" value={formData.cashBagLoaded} onChange={handleChange} />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Cash Bag Total <span className="text-pink-700 dark:text-pink-400 font-black">(END)</span></Label>
-                    <Input name="cashBagTotal" type="text" inputMode="numeric" value={formData.cashBagTotal} onChange={handleChange} />
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Cash Bag Total <span className="text-pink-700 dark:text-pink-400 font-black">(END)</span></Label>
+                      {appliedFromDenomsFeedback && (
+                        <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-1 animate-in fade-in">
+                          <CheckCircle2 className="w-3 h-3" /> Set from counter
+                        </span>
+                      )}
+                    </div>
+                    <Input 
+                      name="cashBagTotal" 
+                      type="text" 
+                      inputMode="numeric" 
+                      value={formData.cashBagTotal} 
+                      onChange={handleChange}
+                      className={appliedFromDenomsFeedback ? 'ring-2 ring-emerald-500/50 border-emerald-500 transition-all' : ''}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">PhonePe Amount</Label>
@@ -284,6 +528,24 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                     <Input name="bonus" type="text" inputMode="numeric" value={formData.bonus} onChange={handleChange} />
                   </div>
                 </div>
+              </div>
+
+              {/* End-of-Day Cash Bag Reconciliation & Denomination Counter */}
+              <div className="pt-2">
+                <CashReconciliationCard
+                  date={date}
+                  cashBagLoaded={cashBagLoaded}
+                  expectedSales={expectedSales}
+                  discount={discount}
+                  phonePe={parseInt(formData.phonePe) || 0}
+                  platformRent={platformRent}
+                  additionalExpenses={additionalExpenses}
+                  bonus={bonus}
+                  cashBagTotal={parseInt(formData.cashBagTotal) || 0}
+                  denominations={denominations}
+                  onDenominationsChange={handleDenominationsChange}
+                  onApplyCashBagTotal={handleApplyCashBagTotal}
+                />
               </div>
             </div>
 
@@ -320,18 +582,62 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
           </CardContent>
         </Card>
 
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3">
           {onCancel && (
-            <Button type="button" variant="outline" className="w-1/3 h-14 text-sm border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
+            <Button type="button" variant="outline" className="sm:w-1/4 h-12 text-xs font-black uppercase tracking-wider border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
               CANCEL
             </Button>
           )}
-          <Button type="submit" disabled={loading} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer">
-              {loading ? 'SAVING...' : isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY'}
-            </Button>
-            
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowWhatsAppModal(true)}
+            className="sm:w-1/3 h-12 text-xs font-black uppercase tracking-wider border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+          >
+            <MessageCircle className="w-4 h-4 text-emerald-600" />
+            <span>Share on WhatsApp</span>
+          </Button>
+
+          <Button type="submit" disabled={loading} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer">
+            {loading ? 'SAVING...' : isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY'}
+          </Button>
         </div>
       </form>
+
+      {/* WhatsApp Daily Closing Summary Modal */}
+      {showWhatsAppModal && (
+        <WhatsAppSummaryModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          entry={{
+            id: entryId || 'draft',
+            date,
+            stickLoaded: parseInt(formData.stickLoaded) || 0,
+            stickBalance: formData.stickBalance !== '' ? parseInt(formData.stickBalance) : undefined,
+            stickSold,
+            potLoaded: parseInt(formData.potLoaded) || 0,
+            potBalance: formData.potBalance !== '' ? parseInt(formData.potBalance) : undefined,
+            potSold,
+            cashBagLoaded: parseInt(formData.cashBagLoaded) || 0,
+            cashBagTotal: parseInt(formData.cashBagTotal) || 0,
+            phonePe: parseInt(formData.phonePe) || 0,
+            discount,
+            requiredAmount,
+            actualAmount,
+            shortage,
+            bonus: parseInt(formData.bonus) || 0,
+            finalAmount,
+            expenses: platformRent,
+            additionalExpenses: parseInt(formData.additionalExpenses) || 0,
+            expenseDetails: formData.expenseDetails,
+            notes: formData.notes,
+            denominations
+          }}
+          inventory={inventory}
+          settings={settings}
+        />
+      )}
     </div>
   );
 }

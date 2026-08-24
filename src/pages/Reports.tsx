@@ -1,20 +1,26 @@
 import React, { useState, useMemo } from 'react';
-import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory } from '../store';
+import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings } from '../store';
 import { Card, CardContent } from '../components/ui/card';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
-import { Trash2, Edit2, Download, Eye, X, Plus, Calendar } from 'lucide-react';
+import { Trash2, Edit2, Download, Eye, X, Plus, Calendar, FileText, MessageCircle, Share2, Printer } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
-import { ExpenseEntry, ProfitWithdrawal, SpecialOrder } from '../types';
+import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder } from '../types';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import MonthlyFinancialStatement from '../components/MonthlyFinancialStatement';
+import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import ExportModal from '../components/ExportModal';
+import { exportMultiTabWorkbook } from '../lib/exportWorkbook';
+
 export default function Reports({ role = 'owner', onEdit, onEditExpense }: { role?: 'owner' | 'manager', onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
   const isOwner = role === 'owner';
   const { entries, loading, reload, loadMore: loadMoreEntries, hasMore: hasMoreEntries } = useEntries();
   const { expenses, loading: expensesLoading, reload: reloadExpenses, loadMore: loadMoreExpenses, hasMore: hasMoreExpenses } = useExpenses();
   const { profitWithdrawals } = useProfitWithdrawals();
+  const { settings } = useSettings();
   const [expenseDeleteConfirmId, setExpenseDeleteConfirmId] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const { theme } = useTheme();
@@ -25,6 +31,9 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const [showProfitModal, setShowProfitModal] = useState(false);
   const [profitForm, setProfitForm] = useState({ amount: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
   
+  const [showStatementModal, setShowStatementModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [whatsAppEntryToShare, setWhatsAppEntryToShare] = useState<DailyEntry | null>(null);
   
   const { specialOrders } = useSpecialOrders();
   const { inventory } = useInventory();
@@ -38,45 +47,10 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
   const [activeListTab, setActiveListTab] = useState<string>('entries');
 
   const { filteredEntries, filteredExpenses, filteredProfits, filteredSpecials, chartData, totals, profitTaken, retainedEarnings } = useMemo(() => {
-    const start = startOfMonth(currentDate);
-    const end = endOfMonth(currentDate);
-
-    const filteredExps = expenses.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start, end });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => b.date.localeCompare(a.date));
-
-    const filteredProfs = profitWithdrawals.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start, end });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => b.date.localeCompare(a.date));
-
-    
-    const filteredSpecials = specialOrders.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start, end });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => b.date.localeCompare(a.date));
-
-    const filtered = entries.filter(e => {
-      try {
-        const date = parseISO(e.date);
-        return isWithinInterval(date, { start, end });
-      } catch {
-        return false;
-      }
-    }).sort((a, b) => b.date.localeCompare(a.date));
+    const filteredExps = expenses.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const filteredProfs = profitWithdrawals.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const filteredSpecials = specialOrders.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const filtered = entries.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     const chartData = [...filtered].reverse().map(e => ({
       date: format(parseISO(e.date), 'dd MMM'),
@@ -85,7 +59,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
 
     const totals = filtered.reduce(
       (acc, e) => {
-        const netSales = e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
+        const netSales = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
         const totalExp = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
         acc.revenue += netSales;
         acc.expenses += totalExp;
@@ -169,7 +143,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           potQuantity: Number(specialForm.potQuantity) || 0,
           amountReceived: Number(specialForm.amountReceived),
           notes: specialForm.notes
-        }, inventory);
+        });
       } else {
         await saveSpecialOrder({
           id: Date.now().toString(),
@@ -179,7 +153,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           potQuantity: Number(specialForm.potQuantity) || 0,
           amountReceived: Number(specialForm.amountReceived),
           notes: specialForm.notes
-        }, inventory);
+        });
       }
       setShowSpecialModal(false);
       setSpecialEditId(null);
@@ -205,7 +179,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
   };
 
   const handleDeleteSpecial = async (order: SpecialOrder) => {
-    await deleteSpecialOrder(order, inventory);
+    await deleteSpecialOrder(order);
     setSpecialDeleteConfirmId(null);
   };
 
@@ -227,31 +201,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
   const handleNextMonth = () => setCurrentDate(prev => subMonths(prev, -1));
 
   const handleExportCSV = () => {
-    if (filteredEntries.length === 0) return;
-    
-    const headers = ['Date', 'Stick Sold', 'Pot Sold', 'Total Revenue', 'Expenses', 'Expense Details', 'Net Amount', 'Notes'];
-    const csvContent = [
-      headers.join(','),
-      ...filteredEntries.map(e => [
-        e.date,
-        e.stickSold,
-        e.potSold,
-        e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0),
-        (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0),
-        `"${(e.expenseDetails || '').replace(/"/g, '""')}"`,
-        (e.actualAmount - (e.cashBagLoaded || 0)),
-        `"${(e.notes || '').replace(/"/g, '""')}"`
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `sales_report_${format(currentDate, 'MMM_yyyy')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setShowExportModal(true);
   };
 
   if (loading) return <div className="p-6 text-center text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Loading reports...</div>;
@@ -267,16 +217,24 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
         </div>
       </div>
       
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowStatementModal(true)} 
+          className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100/70 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800 font-black text-xs cursor-pointer shadow-sm"
+        >
+          <FileText className="w-4 h-4 mr-1.5 text-indigo-600 dark:text-indigo-400" />
+          Month-End Statement
+        </Button>
         <Button 
           variant="outline" 
           size="sm" 
           onClick={handleExportCSV} 
-          className="bg-cyan-50 text-cyan-600 border-cyan-200 hover:bg-cyan-100/60 dark:bg-cyan-900/30 dark:text-cyan-400 dark:border-cyan-800 dark:hover:bg-cyan-900/50 dark:hover:text-cyan-300 font-bold"
-          disabled={filteredEntries.length === 0}
+          className="bg-cyan-50 text-cyan-600 border-cyan-200 hover:bg-cyan-100/60 dark:bg-cyan-900/30 dark:text-cyan-400 dark:border-cyan-800 dark:hover:bg-cyan-900/50 dark:hover:text-cyan-300 font-bold cursor-pointer"
         >
           <Download className="w-4 h-4 mr-2" />
-          Export CSV
+          Export CSV / Excel
         </Button>
       </div>
 
@@ -471,7 +429,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                         {isOwner && (
                           <div>
                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rev</p>
-                             <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0))}</p>
+                             <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(Math.max(0, entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0)))}</p>
                           </div>
                         )}
                         <div>
@@ -496,6 +454,9 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button variant="ghost" size="icon" title="Share on WhatsApp" className="h-8 w-8 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-full" onClick={() => setWhatsAppEntryToShare(entry)}>
+                            <MessageCircle className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(entry)}>
                             <Eye className="h-4 w-4" />
                           </Button>
@@ -509,6 +470,9 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                       )
                     ) : (
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button variant="ghost" size="icon" title="Share on WhatsApp" className="h-8 w-8 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 rounded-full" onClick={() => setWhatsAppEntryToShare(entry)}>
+                          <MessageCircle className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-cyan-500/10 rounded-full" onClick={() => setViewEntry(entry)}>
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -900,6 +864,17 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                       <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug uppercase">{viewEntry.notes}</p>
                     </div>
                   )}
+
+                  <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={() => setWhatsAppEntryToShare(viewEntry)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase h-10 px-4 rounded-xl flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Share on WhatsApp</span>
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -1036,6 +1011,46 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Month-End PDF Financial Statement Modal */}
+      {showStatementModal && (
+        <MonthlyFinancialStatement
+          isOpen={showStatementModal}
+          onClose={() => setShowStatementModal(false)}
+          entries={entries}
+          expenses={expenses}
+          profitWithdrawals={profitWithdrawals}
+          specialOrders={specialOrders}
+          settings={settings}
+          initialDate={currentDate}
+        />
+      )}
+
+      {/* Export CSV / Excel Modal */}
+      {showExportModal && (
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          entries={entries}
+          expenses={expenses}
+          profitWithdrawals={profitWithdrawals}
+          specialOrders={specialOrders}
+          inventory={inventory}
+          settings={settings}
+          currentDate={currentDate}
+        />
+      )}
+
+      {/* WhatsApp Daily Closing Summary Modal */}
+      {whatsAppEntryToShare && (
+        <WhatsAppSummaryModal
+          isOpen={!!whatsAppEntryToShare}
+          onClose={() => setWhatsAppEntryToShare(null)}
+          entry={whatsAppEntryToShare}
+          inventory={inventory}
+          settings={settings}
+        />
       )}
 
     </div>
