@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
-import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder } from './types';
+import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from './types';
 import { db, auth } from './lib/firebase';
 import { collection, onSnapshot, doc, getDocs, getDocsFromServer, getDocFromServer, setDoc, deleteDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -179,6 +179,57 @@ export async function getEntries(): Promise<DailyEntry[]> {
   }
 }
 
+export async function saveDailyDenominations(date: string, denominations: Denominations): Promise<void> {
+  const user = auth.currentUser;
+  triggerWriteStart();
+
+  const total = (
+    ((Number(denominations.n500) || 0) * 500) +
+    ((Number(denominations.n200) || 0) * 200) +
+    ((Number(denominations.n100) || 0) * 100) +
+    ((Number(denominations.n50) || 0) * 50) +
+    ((Number(denominations.n20) || 0) * 20) +
+    ((Number(denominations.n10) || 0) * 10) +
+    (Number(denominations.coins) || 0)
+  );
+
+  const record: DailyDenominationsRecord = {
+    date,
+    denominations,
+    total,
+    updatedBy: user?.email || 'Staff',
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    // 1. Write to dedicated Firestore collection 'daily_denominations' with date as document ID
+    await setDoc(doc(db, 'daily_denominations', date), record, { merge: true });
+
+    // 2. Also update entry document if one exists for this date in Firestore
+    try {
+      const q = query(collection(db, 'entries'));
+      const snap = await getDocs(q);
+      const matching = snap.docs.find(d => (d.data() as DailyEntry).date === date);
+      if (matching) {
+        await setDoc(doc(db, 'entries', matching.id), {
+          denominations,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+    } catch {}
+
+    // 3. Save locally as offline fallback
+    try {
+      localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+    } catch {}
+
+    triggerDataUpdated('denominations', date);
+  } catch (error) {
+    console.error("Error saving daily denominations to Cloud:", error);
+    throw error;
+  }
+}
+
 export async function saveEntry(entry: DailyEntry): Promise<void> {
   const user = auth.currentUser;
   triggerWriteStart();
@@ -193,6 +244,15 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
       await upsertEntryToSupabase(entryWithUser, user?.uid || '');
     } else {
       await setDoc(doc(db, 'entries', entry.id), entryWithUser);
+    }
+
+    // Sync denominations to daily_denominations collection if present
+    if (entry.denominations) {
+      try {
+        await saveDailyDenominations(entry.date, entry.denominations);
+      } catch (err) {
+        console.warn("Could not dual-sync daily denominations:", err);
+      }
     }
 
     await addLog('SAVE_ENTRY', `Saved daily entry for ${entry.date}`);
@@ -563,6 +623,7 @@ export interface StoreState {
   profitWithdrawalsLoading: boolean;
   specialOrders: SpecialOrder[];
   specialOrdersLoading: boolean;
+  dailyDenominationsMap: Record<string, DailyDenominationsRecord>;
   refreshAllFromServer: () => Promise<void>;
   isSyncing: boolean;
   lastSynced: Date;
@@ -602,6 +663,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return [...INITIAL_AUGUST_SPECIAL_ORDERS].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   });
   const [specialOrdersLoading, setSpecialOrdersLoading] = useState(true);
+
+  const [dailyDenominationsMap, setDailyDenominationsMap] = useState<Record<string, DailyDenominationsRecord>>({});
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
@@ -700,15 +763,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         inventorySnap,
         expensesSnap,
         profitsSnap,
-        specialsSnap
+        specialsSnap,
+        denomsSnap
       ] = await Promise.all([
         fetchCollection('entries'),
         fetchDocument('settings', 'global'),
         fetchDocument('inventory', 'global'),
         fetchCollection('expenses'),
         fetchCollection('profitWithdrawals'),
-        fetchCollection('specialOrders')
+        fetchCollection('specialOrders'),
+        fetchCollection('daily_denominations')
       ]);
+
+      if (denomsSnap) {
+        const dMap: Record<string, DailyDenominationsRecord> = {};
+        denomsSnap.docs.forEach(docSnap => {
+          const d = docSnap.data() as DailyDenominationsRecord;
+          dMap[d.date || docSnap.id] = d;
+        });
+        setDailyDenominationsMap(dMap);
+      }
 
       if (entriesSnap) {
         const docs = entriesSnap.docs.map(d => ({ ...d.data(), id: d.id } as DailyEntry));
@@ -905,6 +979,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn("Could not bind specials snapshot:", e);
       }
+
+      try {
+        const unsubDenoms = onSnapshot(
+          collection(db, 'daily_denominations'),
+          (snapshot) => {
+            const dMap: Record<string, DailyDenominationsRecord> = {};
+            snapshot.docs.forEach(docSnap => {
+              const d = docSnap.data() as DailyDenominationsRecord;
+              dMap[d.date || docSnap.id] = d;
+            });
+            setDailyDenominationsMap(prev => ({ ...prev, ...dMap }));
+          },
+          (err) => console.error("Realtime denominations listener error:", err)
+        );
+        unsubs.push(unsubDenoms);
+      } catch (e) {
+        console.warn("Could not bind daily_denominations snapshot:", e);
+      }
     }
 
     refreshAllFromServer();
@@ -944,6 +1036,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses,
       profitWithdrawals, profitWithdrawalsLoading,
       specialOrders, specialOrdersLoading,
+      dailyDenominationsMap,
       refreshAllFromServer,
       isSyncing,
       lastSynced,
@@ -963,6 +1056,25 @@ export function useEntries() {
     loadMore: ctx.loadMoreEntries, 
     hasMore: ctx.hasMoreEntries, 
     reload: ctx.refreshAllFromServer 
+  };
+}
+
+export function useDailyDenominations(targetDate?: string) {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useDailyDenominations must be used within StoreProvider");
+
+  const record = targetDate ? ctx.dailyDenominationsMap[targetDate] : undefined;
+
+  const saveDenominations = useCallback(async (date: string, denoms: Denominations) => {
+    await saveDailyDenominations(date, denoms);
+  }, []);
+
+  return {
+    dailyDenominationsMap: ctx.dailyDenominationsMap,
+    record,
+    denominations: record?.denominations,
+    saveDenominations,
+    reload: ctx.refreshAllFromServer
   };
 }
 

@@ -8,6 +8,15 @@ export interface Denominations {
   coins: number;
 }
 
+export interface DailyDenominationsRecord {
+  id?: string;
+  date: string;
+  denominations: Denominations;
+  total: number;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
 export interface DailyEntry {
   id: string;
   date: string; // YYYY-MM-DD

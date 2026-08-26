@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
-import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders } from '../store';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, saveDailyDenominations } from '../store';
 import { format, subDays, parseISO } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -35,6 +35,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const { entries } = useEntries();
   const { inventory } = useInventory();
   const { specialOrders } = useSpecialOrders();
+  const { dailyDenominationsMap } = useDailyDenominations();
   const [loading, setLoading] = useState(false);
   const [date, setDate] = useState(initialDate || format(new Date(), 'yyyy-MM-dd'));
   const [entryId, setEntryId] = useState<string>('');
@@ -61,6 +62,10 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     const existingEntry = entries.find(e => e.date === date);
     let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
 
+    // 1. Check global real-time cloud denominations map first (synced across all devices/users)
+    const cloudRecord = dailyDenominationsMap[date];
+    const cloudDenoms = cloudRecord?.denominations;
+
     if (existingEntry) {
       setIsEditing(true);
       setEntryId(existingEntry.id);
@@ -79,7 +84,17 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         notes: existingEntry.notes ?? ''
       });
 
-      if (existingEntry.denominations) {
+      if (cloudDenoms) {
+        loadedDenoms = {
+          n500: Number(cloudDenoms.n500) || 0,
+          n200: Number(cloudDenoms.n200) || 0,
+          n100: Number(cloudDenoms.n100) || 0,
+          n50: Number(cloudDenoms.n50) || 0,
+          n20: Number(cloudDenoms.n20) || 0,
+          n10: Number(cloudDenoms.n10) || 0,
+          coins: Number(cloudDenoms.coins) || 0
+        };
+      } else if (existingEntry.denominations) {
         loadedDenoms = {
           n500: Number(existingEntry.denominations.n500) || 0,
           n200: Number(existingEntry.denominations.n200) || 0,
@@ -118,22 +133,34 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         notes: ''
       });
 
-      // Check draft denominations cache for this new date
-      try {
-        const cached = localStorage.getItem(`kulfi_denoms_${date}`);
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          loadedDenoms = {
-            n500: Number(parsed.n500) || 0,
-            n200: Number(parsed.n200) || 0,
-            n100: Number(parsed.n100) || 0,
-            n50: Number(parsed.n50) || 0,
-            n20: Number(parsed.n20) || 0,
-            n10: Number(parsed.n10) || 0,
-            coins: Number(parsed.coins) || 0
-          };
-        }
-      } catch {}
+      if (cloudDenoms) {
+        loadedDenoms = {
+          n500: Number(cloudDenoms.n500) || 0,
+          n200: Number(cloudDenoms.n200) || 0,
+          n100: Number(cloudDenoms.n100) || 0,
+          n50: Number(cloudDenoms.n50) || 0,
+          n20: Number(cloudDenoms.n20) || 0,
+          n10: Number(cloudDenoms.n10) || 0,
+          coins: Number(cloudDenoms.coins) || 0
+        };
+      } else {
+        // Check draft denominations cache for this new date
+        try {
+          const cached = localStorage.getItem(`kulfi_denoms_${date}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            loadedDenoms = {
+              n500: Number(parsed.n500) || 0,
+              n200: Number(parsed.n200) || 0,
+              n100: Number(parsed.n100) || 0,
+              n50: Number(parsed.n50) || 0,
+              n20: Number(parsed.n20) || 0,
+              n10: Number(parsed.n10) || 0,
+              coins: Number(parsed.coins) || 0
+            };
+          }
+        } catch {}
+      }
     }
 
     setDenominations(loadedDenoms);
@@ -151,7 +178,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     } else {
       setPrevBalances({ stick: 0, pot: 0 });
     }
-  }, [date, entries]);
+  }, [date, entries, dailyDenominationsMap]);
 
   const handleDenominationsChange = (newDenoms: Denominations) => {
     setDenominations(newDenoms);
@@ -160,6 +187,10 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     } catch (e) {
       console.warn('Failed to save draft denominations to localStorage', e);
     }
+    // Instantly sync to Cloud Firestore so all other logged in users (e.g. Nadeem) see it in realtime
+    saveDailyDenominations(date, newDenoms).catch(err => {
+      console.warn('Real-time denomination cloud sync error:', err);
+    });
   };
 
   const handleApplyCashBagTotal = (total: number) => {
@@ -577,8 +608,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                   bonus={bonus}
                   cashBagTotal={parseInt(formData.cashBagTotal) || 0}
                   denominations={denominations}
-                  allEntries={entries}
-                  onSwitchDate={(targetDate) => setDate(targetDate)}
+                  cloudRecord={dailyDenominationsMap[date]}
                   onDenominationsChange={handleDenominationsChange}
                   onApplyCashBagTotal={handleApplyCashBagTotal}
                 />

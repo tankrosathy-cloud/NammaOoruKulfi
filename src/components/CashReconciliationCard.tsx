@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -13,12 +13,9 @@ import {
   Sparkles,
   RotateCcw,
   Check,
-  Calendar,
-  ArrowRight,
-  Copy,
-  History
+  Calendar
 } from 'lucide-react';
-import { DailyEntry, Denominations } from '../types';
+import { Denominations, DailyDenominationsRecord } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { format, parseISO } from 'date-fns';
 
@@ -33,8 +30,7 @@ interface CashReconciliationCardProps {
   bonus: number;
   cashBagTotal: number;
   denominations?: Denominations;
-  allEntries?: DailyEntry[];
-  onSwitchDate?: (targetDate: string) => void;
+  cloudRecord?: DailyDenominationsRecord;
   onDenominationsChange?: (denoms: Denominations) => void;
   onApplyCashBagTotal: (total: number) => void;
 }
@@ -60,8 +56,7 @@ export default function CashReconciliationCard({
   bonus,
   cashBagTotal,
   denominations,
-  allEntries,
-  onSwitchDate,
+  cloudRecord,
   onDenominationsChange,
   onApplyCashBagTotal
 }: CashReconciliationCardProps) {
@@ -107,37 +102,6 @@ export default function CashReconciliationCard({
     }
   }, [hasAnyDenoms]);
 
-  // Find yesterday or most recent prior entry with saved denominations
-  const priorEntryWithDenoms = useMemo(() => {
-    if (!allEntries || !date) return null;
-    const sorted = [...allEntries]
-      .filter(e => e.date < date)
-      .sort((a, b) => b.date.localeCompare(a.date));
-    
-    for (const e of sorted) {
-      let d = e.denominations;
-      if (!d) {
-        try {
-          const cached = localStorage.getItem(`kulfi_denoms_${e.date}`);
-          if (cached) d = JSON.parse(cached);
-        } catch {}
-      }
-      if (d) {
-        const sum = ((d.n500 || 0) * 500) +
-          ((d.n200 || 0) * 200) +
-          ((d.n100 || 0) * 100) +
-          ((d.n50 || 0) * 50) +
-          ((d.n20 || 0) * 20) +
-          ((d.n10 || 0) * 10) +
-          (d.coins || 0);
-        if (sum > 0) {
-          return { entry: e, denoms: d, total: sum };
-        }
-      }
-    }
-    return null;
-  }, [allEntries, date]);
-
   const handleDenomChange = (key: keyof Denominations, valStr: string) => {
     const cleanStr = valStr.replace(/[^0-9]/g, '');
     const val = parseInt(cleanStr) || 0;
@@ -169,30 +133,6 @@ export default function CashReconciliationCard({
       setLocalDenoms(zeroed);
     }
     setAppliedInfo(null);
-  };
-
-  const handleCopyFromPrior = () => {
-    if (!priorEntryWithDenoms) return;
-    const copied: Denominations = {
-      n500: Number(priorEntryWithDenoms.denoms.n500) || 0,
-      n200: Number(priorEntryWithDenoms.denoms.n200) || 0,
-      n100: Number(priorEntryWithDenoms.denoms.n100) || 0,
-      n50: Number(priorEntryWithDenoms.denoms.n50) || 0,
-      n20: Number(priorEntryWithDenoms.denoms.n20) || 0,
-      n10: Number(priorEntryWithDenoms.denoms.n10) || 0,
-      coins: Number(priorEntryWithDenoms.denoms.coins) || 0
-    };
-    if (date) {
-      try {
-        localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(copied));
-      } catch {}
-    }
-    if (onDenominationsChange) {
-      onDenominationsChange(copied);
-    } else {
-      setLocalDenoms(copied);
-    }
-    setShowDenomCalculator(true);
   };
 
   const handleApplyCounted = () => {
@@ -318,45 +258,6 @@ export default function CashReconciliationCard({
           </div>
         </div>
 
-        {/* Banner if looking at today but prior day has saved denominations */}
-        {!hasAnyDenoms && priorEntryWithDenoms && (
-          <div className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                <History className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-xs">
-                <span className="font-bold text-slate-700 dark:text-slate-300">Saved Denominations on </span>
-                <span className="font-black text-purple-700 dark:text-purple-300">{format(parseISO(priorEntryWithDenoms.entry.date), 'dd MMM yyyy')}: </span>
-                <span className="font-black text-emerald-600 dark:text-emerald-400">₹{priorEntryWithDenoms.total.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-              {onSwitchDate && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSwitchDate(priorEntryWithDenoms.entry.date)}
-                  className="h-7 text-[10px] font-black uppercase text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-lg cursor-pointer flex items-center gap-1"
-                >
-                  <span>View {format(parseISO(priorEntryWithDenoms.entry.date), 'dd MMM')} Record</span>
-                  <ArrowRight className="w-3 h-3" />
-                </Button>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleCopyFromPrior}
-                className="h-7 text-[10px] font-black uppercase bg-purple-600 hover:bg-purple-700 text-white rounded-lg cursor-pointer flex items-center gap-1 shadow-xs"
-              >
-                <Copy className="w-3 h-3" />
-                <span>Copy to {formattedDateStr || 'Today'}</span>
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Confirmation Banner if amount was applied to cash bag */}
         {appliedInfo && (
           <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
@@ -388,26 +289,23 @@ export default function CashReconciliationCard({
         {/* Interactive Denomination Counter Drawer */}
         {showDenomCalculator && (
           <div className="p-4 rounded-2xl bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <Calculator className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <h5 className="text-[10px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
                   Denomination Currency Counter {formattedDateStr ? `(${formattedDateStr})` : ''}
                 </h5>
+                <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Live Cloud Synced
+                </span>
+                {cloudRecord?.updatedBy && (
+                  <span className="text-[9px] font-medium text-slate-500">
+                    (Updated by {cloudRecord.updatedBy})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
-                {priorEntryWithDenoms && !hasAnyDenoms && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyFromPrior}
-                    className="h-6 text-[9px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 px-2 rounded-lg cursor-pointer flex items-center gap-1"
-                    title={`Copy counts from ${format(parseISO(priorEntryWithDenoms.entry.date), 'dd MMM')}`}
-                  >
-                    <Copy className="w-3 h-3" /> Copy {format(parseISO(priorEntryWithDenoms.entry.date), 'dd MMM')} (₹{priorEntryWithDenoms.total})
-                  </Button>
-                )}
                 <Button
                   type="button"
                   variant="ghost"

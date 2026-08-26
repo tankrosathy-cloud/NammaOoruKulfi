@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings } from '../store';
+import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings, useDailyDenominations } from '../store';
 import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -7,7 +7,7 @@ import { Trash2, Edit2, Download, Eye, X, Plus, Calendar, FileText, MessageCircl
 import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
-import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, Denominations } from '../types';
+import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from '../types';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import MonthlyFinancialStatement from '../components/MonthlyFinancialStatement';
@@ -15,7 +15,10 @@ import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
 import ExportModal from '../components/ExportModal';
 import { exportMultiTabWorkbook } from '../lib/exportWorkbook';
 
-const getEntryDenominations = (e: DailyEntry): Denominations | undefined => {
+const getEntryDenominations = (e: DailyEntry, dailyDenomsMap?: Record<string, DailyDenominationsRecord>): Denominations | undefined => {
+  if (dailyDenomsMap && dailyDenomsMap[e.date]?.denominations) {
+    return dailyDenomsMap[e.date].denominations;
+  }
   if (e.denominations) return e.denominations;
   try {
     const cached = localStorage.getItem(`kulfi_denoms_${e.date}`);
@@ -43,6 +46,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const { expenses, loading: expensesLoading, reload: reloadExpenses, loadMore: loadMoreExpenses, hasMore: hasMoreExpenses } = useExpenses();
   const { profitWithdrawals } = useProfitWithdrawals();
   const { settings } = useSettings();
+  const { dailyDenominationsMap } = useDailyDenominations();
   const [expenseDeleteConfirmId, setExpenseDeleteConfirmId] = useState<string | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const { theme } = useTheme();
@@ -891,7 +895,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                   </div>
                   {/* Physical Cash Denominations Breakdown */}
                   {(() => {
-                    const denoms = getEntryDenominations(viewEntry);
+                    const denoms = getEntryDenominations(viewEntry, dailyDenominationsMap);
                     const total = getDenomTotal(denoms);
                     if (!denoms || total === 0) return null;
                     return (
