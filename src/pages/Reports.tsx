@@ -3,17 +3,39 @@ import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawa
 import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
-import { Trash2, Edit2, Download, Eye, X, Plus, Calendar, FileText, MessageCircle, Share2, Printer } from 'lucide-react';
+import { Trash2, Edit2, Download, Eye, X, Plus, Calendar, FileText, MessageCircle, Share2, Printer, Coins } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
-import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder } from '../types';
+import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, Denominations } from '../types';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import MonthlyFinancialStatement from '../components/MonthlyFinancialStatement';
 import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
 import ExportModal from '../components/ExportModal';
 import { exportMultiTabWorkbook } from '../lib/exportWorkbook';
+
+const getEntryDenominations = (e: DailyEntry): Denominations | undefined => {
+  if (e.denominations) return e.denominations;
+  try {
+    const cached = localStorage.getItem(`kulfi_denoms_${e.date}`);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+  return undefined;
+};
+
+const getDenomTotal = (d?: Denominations): number => {
+  if (!d) return 0;
+  return (
+    ((Number(d.n500) || 0) * 500) +
+    ((Number(d.n200) || 0) * 200) +
+    ((Number(d.n100) || 0) * 100) +
+    ((Number(d.n50) || 0) * 50) +
+    ((Number(d.n20) || 0) * 20) +
+    ((Number(d.n10) || 0) * 10) +
+    (Number(d.coins) || 0)
+  );
+};
 
 export default function Reports({ role = 'owner', onEdit, onEditExpense }: { role?: 'owner' | 'manager', onEdit: (date: string) => void, onEditExpense: (expense: ExpenseEntry) => void }) {
   const isOwner = role === 'owner';
@@ -424,7 +446,22 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                 <CardContent className="p-5">
                   <div className="flex justify-between items-start gap-4 mb-2">
                     <div className="flex-1 min-w-0">
-                      <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
+                        {(() => {
+                          const denoms = getEntryDenominations(entry);
+                          const total = getDenomTotal(denoms);
+                          if (total > 0) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
+                                <Coins className="w-2.5 h-2.5" />
+                                <span>Denom: ₹{total.toLocaleString('en-IN')}</span>
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3">
                         {isOwner && (
                           <div>
@@ -852,6 +889,70 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                       </div>
                     </div>
                   </div>
+                  {/* Physical Cash Denominations Breakdown */}
+                  {(() => {
+                    const denoms = getEntryDenominations(viewEntry);
+                    const total = getDenomTotal(denoms);
+                    if (!denoms || total === 0) return null;
+                    return (
+                      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                            <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span>Physical Cash Denominations</span>
+                          </p>
+                          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                            Total Counted: ₹{total.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {Number(denoms.n500) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹500 × {denoms.n500}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n500 * 500).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.n200) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹200 × {denoms.n200}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n200 * 200).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.n100) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹100 × {denoms.n100}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n100 * 100).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.n50) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹50 × {denoms.n50}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n50 * 50).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.n20) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹20 × {denoms.n20}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n20 * 20).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.n10) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs">
+                              <span className="text-[10px] font-bold text-slate-500">₹10 × {denoms.n10}</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{(denoms.n10 * 10).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                          {Number(denoms.coins) > 0 && (
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700/50 flex justify-between items-center text-xs col-span-2 sm:col-span-1">
+                              <span className="text-[10px] font-bold text-slate-500">Coins / Others</span>
+                              <span className="font-black text-emerald-600 dark:text-emerald-400">₹{Number(denoms.coins).toLocaleString('en-IN')}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {viewEntry.expenseDetails && (
                     <div className="mt-4 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                       <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Expense Details</p>

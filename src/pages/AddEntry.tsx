@@ -22,6 +22,14 @@ const DEFAULT_DENOMS: Denominations = {
   coins: 0
 };
 
+// Helper to keep 0 / empty values completely blank in inputs
+const numToInputStr = (val: number | string | undefined | null): string => {
+  if (val === undefined || val === null || val === '' || val === 0 || val === '0') {
+    return '';
+  }
+  return val.toString();
+};
+
 export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: () => void, onCancel?: () => void, initialDate?: string, key?: string }) {
   const { settings } = useSettings();
   const { entries } = useEntries();
@@ -57,17 +65,17 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
       setIsEditing(true);
       setEntryId(existingEntry.id);
       setFormData({
-        stickLoaded: (existingEntry.stickLoaded ?? '').toString(),
-        stickBalance: (existingEntry.stickBalance ?? '').toString(),
-        potLoaded: (existingEntry.potLoaded ?? '').toString(),
-        potBalance: (existingEntry.potBalance ?? '').toString(),
-        cashBagLoaded: (existingEntry.cashBagLoaded ?? '').toString(),
-        cashBagTotal: (existingEntry.cashBagTotal ?? '').toString(),
-        phonePe: (existingEntry.phonePe ?? '').toString(),
-        discount: (existingEntry.discount ?? '').toString(),
-        additionalExpenses: (existingEntry.additionalExpenses ?? '').toString(),
+        stickLoaded: numToInputStr(existingEntry.stickLoaded),
+        stickBalance: numToInputStr(existingEntry.stickBalance),
+        potLoaded: numToInputStr(existingEntry.potLoaded),
+        potBalance: numToInputStr(existingEntry.potBalance),
+        cashBagLoaded: numToInputStr(existingEntry.cashBagLoaded),
+        cashBagTotal: numToInputStr(existingEntry.cashBagTotal),
+        phonePe: numToInputStr(existingEntry.phonePe),
+        discount: numToInputStr(existingEntry.discount),
+        additionalExpenses: numToInputStr(existingEntry.additionalExpenses),
         expenseDetails: existingEntry.expenseDetails ?? '',
-        bonus: (existingEntry.bonus ?? '').toString(),
+        bonus: numToInputStr(existingEntry.bonus),
         notes: existingEntry.notes ?? ''
       });
 
@@ -229,6 +237,15 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (e.target.value === '0') {
+      const { name } = e.target;
+      setFormData(prev => ({ ...prev, [name]: '' }));
+    } else if (e.target.select) {
+      e.target.select();
+    }
+  };
+
   
   
 
@@ -276,6 +293,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   };
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
   const sortedEntries = useMemo(() => {
     return [...entries].sort((a, b) => b.date.localeCompare(a.date));
   }, [entries]);
@@ -311,24 +329,39 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            Today {entries.some(e => e.date === todayStr) ? '✓' : ''}
+            Today ({format(parseISO(todayStr), 'dd MMM')}) {entries.some(e => e.date === todayStr) ? '✓' : ''}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDate(yesterdayStr)}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all ${
+              date === yesterdayStr
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Yesterday ({format(parseISO(yesterdayStr), 'dd MMM')}) {entries.some(e => e.date === yesterdayStr) ? '✓' : ''}
           </button>
           
-          {sortedEntries.slice(0, 4).map(e => (
-            <button
-              key={e.id || e.date}
-              type="button"
-              onClick={() => setDate(e.date)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all flex items-center gap-1 ${
-                date === e.date
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <span>{format(parseISO(e.date), 'dd MMM')}</span>
-              <span className="text-[9px] opacity-80">✓</span>
-            </button>
-          ))}
+          {sortedEntries
+            .filter(e => e.date !== todayStr && e.date !== yesterdayStr)
+            .slice(0, 3)
+            .map(e => (
+              <button
+                key={e.id || e.date}
+                type="button"
+                onClick={() => setDate(e.date)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all flex items-center gap-1 ${
+                  date === e.date
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <span>{format(parseISO(e.date), 'dd MMM')}</span>
+                <span className="text-[9px] opacity-80">✓</span>
+              </button>
+            ))}
         </div>
       </div>
 
@@ -469,22 +502,22 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availableStick})</span></Label>
-                      <Input name="stickLoaded" type="text" inputMode="numeric" value={formData.stickLoaded} onChange={handleChange} />
+                      <Input name="stickLoaded" type="text" inputMode="numeric" value={formData.stickLoaded} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Balance</Label>
-                      <Input name="stickBalance" type="text" inputMode="numeric" value={formData.stickBalance} onChange={handleChange} />
+                      <Input name="stickBalance" type="text" inputMode="numeric" value={formData.stickBalance} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availablePot})</span></Label>
-                      <Input name="potLoaded" type="text" inputMode="numeric" value={formData.potLoaded} onChange={handleChange} />
+                      <Input name="potLoaded" type="text" inputMode="numeric" value={formData.potLoaded} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Balance</Label>
-                      <Input name="potBalance" type="text" inputMode="numeric" value={formData.potBalance} onChange={handleChange} />
+                      <Input name="potBalance" type="text" inputMode="numeric" value={formData.potBalance} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                   </div>
                 </div>
@@ -495,7 +528,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Cash Bag Loaded <span className="text-cyan-700 dark:text-cyan-400 font-black">(START)</span></Label>
-                    <Input name="cashBagLoaded" type="text" inputMode="numeric" value={formData.cashBagLoaded} onChange={handleChange} />
+                    <Input name="cashBagLoaded" type="text" inputMode="numeric" value={formData.cashBagLoaded} onChange={handleChange} onFocus={handleFocus} />
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -512,20 +545,21 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                       inputMode="numeric" 
                       value={formData.cashBagTotal} 
                       onChange={handleChange}
+                      onFocus={handleFocus}
                       className={appliedFromDenomsFeedback ? 'ring-2 ring-emerald-500/50 border-emerald-500 transition-all' : ''}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">PhonePe Amount</Label>
-                    <Input name="phonePe" type="text" inputMode="numeric" value={formData.phonePe} onChange={handleChange} />
+                    <Input name="phonePe" type="text" inputMode="numeric" value={formData.phonePe} onChange={handleChange} onFocus={handleFocus} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Offer/Discount</Label>
-                    <Input name="discount" type="text" inputMode="numeric" value={formData.discount} onChange={handleChange} />
+                    <Input name="discount" type="text" inputMode="numeric" value={formData.discount} onChange={handleChange} onFocus={handleFocus} />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Bonus</Label>
-                    <Input name="bonus" type="text" inputMode="numeric" value={formData.bonus} onChange={handleChange} />
+                    <Input name="bonus" type="text" inputMode="numeric" value={formData.bonus} onChange={handleChange} onFocus={handleFocus} />
                   </div>
                 </div>
               </div>
@@ -543,6 +577,8 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                   bonus={bonus}
                   cashBagTotal={parseInt(formData.cashBagTotal) || 0}
                   denominations={denominations}
+                  allEntries={entries}
+                  onSwitchDate={(targetDate) => setDate(targetDate)}
                   onDenominationsChange={handleDenominationsChange}
                   onApplyCashBagTotal={handleApplyCashBagTotal}
                 />

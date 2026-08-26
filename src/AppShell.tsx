@@ -8,7 +8,7 @@ import SettingsPage from './pages/Settings';
 import AddExpense from './pages/AddExpense';
 import HistoryLogs from './pages/HistoryLogs';
 import { auth } from './lib/firebase';
-import { StoreProvider } from './store';
+import { StoreProvider, isUserAdminOrOwner } from './store';
 import { signOut } from 'firebase/auth';
 import { useTheme } from './context/ThemeContext';
 import { motion } from 'motion/react';
@@ -20,7 +20,7 @@ function AppShellContent() {
 
   const userEmail = auth.currentUser?.email || '';
   const username = userEmail.split('@')[0].toLowerCase();
-  const role = ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username) ? 'owner' : 'manager';
+  const role = isUserAdminOrOwner(username) ? 'owner' : 'manager';
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
 

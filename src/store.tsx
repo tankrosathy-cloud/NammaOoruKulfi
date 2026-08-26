@@ -27,6 +27,14 @@ import {
   clearLogsFromSupabase
 } from './lib/supabaseService';
 
+export const ADMIN_USERNAMES = ['nadeem', 'admin', 'administrator', 'yuvaraj', 'tankrosathy'];
+
+export function isUserAdminOrOwner(userOrEmail?: string | null): boolean {
+  if (!userOrEmail) return true;
+  const username = userOrEmail.includes('@') ? userOrEmail.split('@')[0].toLowerCase() : userOrEmail.toLowerCase();
+  return ADMIN_USERNAMES.includes(username);
+}
+
 const DEFAULT_SETTINGS: Settings = {
   stickPrice: 40,
   potPrice: 50,
@@ -198,7 +206,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
 export async function deleteEntry(id: string): Promise<void> {
   const user = auth.currentUser;
   const username = (user?.email || '').split('@')[0].toLowerCase();
-  const isOwner = !user || ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  const isOwner = !user || isUserAdminOrOwner(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete entries.");
   }
@@ -377,7 +385,7 @@ export async function saveExpense(expense: ExpenseEntry): Promise<void> {
 export async function deleteExpense(id: string): Promise<void> {
   const user = auth.currentUser;
   const username = (user?.email || '').split('@')[0].toLowerCase();
-  const isOwner = !user || ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  const isOwner = !user || isUserAdminOrOwner(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete expenses.");
   }
@@ -434,7 +442,7 @@ export async function saveProfitWithdrawal(withdrawal: ProfitWithdrawal): Promis
 export async function deleteProfitWithdrawal(id: string): Promise<void> {
   const user = auth.currentUser;
   const username = (user?.email || '').split('@')[0].toLowerCase();
-  const isOwner = !user || ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  const isOwner = !user || isUserAdminOrOwner(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete profit withdrawals.");
   }
@@ -515,7 +523,7 @@ export async function updateSpecialOrder(_oldOrder: SpecialOrder, newOrder: Spec
 export async function deleteSpecialOrder(order: SpecialOrder, _currentInventory?: InventoryStock): Promise<void> {
   const user = auth.currentUser;
   const username = (user?.email || '').split('@')[0].toLowerCase();
-  const isOwner = !user || ['nadeem', 'yuvaraj', 'tankrosathy'].includes(username);
+  const isOwner = !user || isUserAdminOrOwner(username);
   if (!isOwner) {
     throw new Error("Staff members do not have permission to delete special orders.");
   }

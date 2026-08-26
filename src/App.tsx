@@ -52,7 +52,14 @@ function Login() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
 
-  const allowedUsers = ['Nadeem', 'Yuvaraj', 'Althaf', 'Sebastin', 'Nafees'];
+  const allowedUsers = [
+    { name: 'Nadeem', role: 'Owner' },
+    { name: 'Admin', role: 'Admin' },
+    { name: 'Yuvaraj', role: 'Owner' },
+    { name: 'Althaf', role: 'Staff' },
+    { name: 'Sebastin', role: 'Staff' },
+    { name: 'Nafees', role: 'Staff' }
+  ];
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,14 +151,14 @@ function Login() {
             <label className={`text-[10px] font-bold uppercase tracking-widest block text-center mb-4 ${
               isDark ? 'text-slate-400' : 'text-slate-500'
             }`}>Select User</label>
-            <div className="grid grid-cols-2 gap-3">
-              {allowedUsers.map(user => (
+            <div className="grid grid-cols-2 gap-2.5">
+              {allowedUsers.map(u => (
                 <button
-                  key={user}
+                  key={u.name}
                   type="button"
-                  onClick={() => setUserId(user)}
-                  className={`h-12 rounded-xl text-xs font-black uppercase tracking-wider border transition-all ${
-                    userId === user 
+                  onClick={() => setUserId(u.name)}
+                  className={`h-12 px-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all flex flex-col items-center justify-center ${
+                    userId === u.name 
                       ? isDark
                         ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]' 
                         : 'bg-cyan-50 border-cyan-500 text-cyan-600 shadow-md'
@@ -160,7 +167,10 @@ function Login() {
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}
                 >
-                  {user}
+                  <span>{u.name}</span>
+                  <span className={`text-[8px] font-bold opacity-75 uppercase tracking-tight`}>
+                    {u.role}
+                  </span>
                 </button>
               ))}
             </div>

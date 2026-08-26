@@ -5,18 +5,24 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { saveExpense } from '../store';
 import { ExpenseEntry } from '../types';
+import { auth } from '../lib/firebase';
 
 export default function AddExpense({ onSave, onCancel, initialExpense }: { onSave: () => void, onCancel?: () => void, initialExpense?: ExpenseEntry }) {
   const [loading, setLoading] = useState(false);
+
+  const currentUserEmail = auth.currentUser?.email || '';
+  const currentUsername = currentUserEmail.split('@')[0].toLowerCase();
+  const defaultPayer = initialExpense?.paidBy || (currentUsername === 'admin' ? 'Admin' : currentUsername === 'yuvaraj' ? 'Yuvaraj' : 'Nadeem');
+
   const [formData, setFormData] = useState({
     date: initialExpense?.date || new Date().toLocaleDateString('en-CA'),
-    paidBy: initialExpense?.paidBy || 'Nadeem',
+    paidBy: defaultPayer,
     category: initialExpense?.category || 'Food',
     amount: initialExpense ? initialExpense.amount.toString() : '',
     notes: initialExpense?.notes || ''
   });
 
-  const allowedUsers = ['Nadeem', 'Yuvaraj'];
+  const allowedUsers = ['Nadeem', 'Admin', 'Yuvaraj'];
   const categories = ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Others'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {

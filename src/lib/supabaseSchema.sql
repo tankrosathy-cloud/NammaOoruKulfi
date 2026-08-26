@@ -26,10 +26,14 @@ CREATE TABLE IF NOT EXISTS public.entries (
     additional_expenses NUMERIC(10, 2) DEFAULT 0,
     expense_details TEXT DEFAULT '',
     notes TEXT DEFAULT '',
+    denominations JSONB DEFAULT '{}'::jsonb,
     user_id TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- In case public.entries already exists without the column:
+ALTER TABLE public.entries ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;
 
 -- 2. Standalone Business Expenses Table
 CREATE TABLE IF NOT EXISTS public.expenses (

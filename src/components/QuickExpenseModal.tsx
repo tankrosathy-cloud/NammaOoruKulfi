@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { saveExpense } from '../store';
 import { ExpenseEntry } from '../types';
+import { auth } from '../lib/firebase';
 
 interface QuickExpenseModalProps {
   isOpen: boolean;
@@ -43,6 +44,11 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState('');
 
+  const currentUserEmail = auth.currentUser?.email || '';
+  const currentUsername = currentUserEmail.split('@')[0].toLowerCase();
+  const currentPayerName = currentUsername === 'admin' ? 'Admin' : currentUsername === 'yuvaraj' ? 'Yuvaraj' : 'Nadeem';
+  const [paidBy, setPaidBy] = useState(currentPayerName);
+
   // Reset form state on open
   useEffect(() => {
     if (isOpen) {
@@ -52,8 +58,9 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
       setDate(new Date().toLocaleDateString('en-CA'));
       setShowSuccess(false);
       setError('');
+      setPaidBy(currentPayerName);
     }
-  }, [isOpen]);
+  }, [isOpen, currentPayerName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,7 +77,7 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
     const expense: ExpenseEntry = {
       id: Date.now().toString(),
       date,
-      paidBy: 'Nadeem', // Preset as requested
+      paidBy: paidBy || currentPayerName,
       category,
       amount: numericAmount,
       notes: notes.trim()
@@ -132,7 +139,7 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
                     <Check className="w-8 h-8 stroke-[3]" />
                   </motion.div>
                   <h3 className="text-xl font-black uppercase tracking-wider text-center">Expense Saved!</h3>
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Logged by Nadeem</p>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Logged by {paidBy || currentPayerName}</p>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
@@ -145,7 +152,7 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
                       <div>
                         <h3 className="font-black text-lg uppercase tracking-tight leading-none">Quick Expense</h3>
                         <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5 block">
-                          Payer: <span className="text-cyan-600 dark:text-cyan-400">Nadeem (Preset)</span>
+                          Payer: <span className="text-cyan-600 dark:text-cyan-400 font-bold">{paidBy || currentPayerName}</span>
                         </span>
                       </div>
                     </div>

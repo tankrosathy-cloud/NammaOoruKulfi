@@ -29,12 +29,24 @@ function entryToRow(e: DailyEntry, userId: string = '') {
     additional_expenses: Number(e.additionalExpenses) || 0,
     expense_details: e.expenseDetails || '',
     notes: e.notes || '',
+    denominations: e.denominations || null,
     user_id: userId || e.userId || '',
     updated_at: new Date().toISOString()
   };
 }
 
 function rowToEntry(r: any): DailyEntry {
+  let parsedDenominations = undefined;
+  if (r.denominations) {
+    if (typeof r.denominations === 'string') {
+      try {
+        parsedDenominations = JSON.parse(r.denominations);
+      } catch {}
+    } else if (typeof r.denominations === 'object') {
+      parsedDenominations = r.denominations;
+    }
+  }
+
   return {
     id: r.id,
     date: r.date,
@@ -57,6 +69,7 @@ function rowToEntry(r: any): DailyEntry {
     additionalExpenses: Number(r.additional_expenses) || 0,
     expenseDetails: r.expense_details || '',
     notes: r.notes || '',
+    denominations: parsedDenominations,
     userId: r.user_id || '',
     updatedAt: r.updated_at
   };
@@ -237,6 +250,16 @@ export async function upsertEntryToSupabase(entry: DailyEntry, userId: string = 
   const row = entryToRow(entry, userId);
   const { error } = await client.from('entries').upsert(row, { onConflict: 'id' });
   if (error) {
+    // If Postgres table doesn't have denominations column yet, fallback without it
+    if (error.message && error.message.includes('denominations')) {
+      const { denominations, ...fallbackRow } = row;
+      const { error: retryError } = await client.from('entries').upsert(fallbackRow, { onConflict: 'id' });
+      if (retryError) {
+        console.error('Supabase upsert entry retry error:', retryError);
+        throw retryError;
+      }
+      return true;
+    }
     console.error('Supabase upsert entry error:', error);
     throw error;
   }
