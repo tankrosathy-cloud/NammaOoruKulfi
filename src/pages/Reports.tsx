@@ -237,9 +237,9 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">Reports</h2>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Button variant="outline" size="sm" onClick={handlePrevMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-850 dark:text-white dark:hover:bg-slate-800">&lt;</Button>
+          <Button variant="outline" size="sm" onClick={handlePrevMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-800">&lt;</Button>
           <span className="text-xs font-black tracking-wider uppercase w-24 text-center text-slate-700 dark:text-slate-200">{format(currentDate, 'MMM yyyy')}</span>
-          <Button variant="outline" size="sm" onClick={handleNextMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-850 dark:text-white dark:hover:bg-slate-800">&gt;</Button>
+          <Button variant="outline" size="sm" onClick={handleNextMonth} className="h-8 w-8 p-0 rounded-full border-slate-200 bg-white text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-800">&gt;</Button>
         </div>
       </div>
       
@@ -453,7 +453,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
                         {(() => {
-                          const denoms = getEntryDenominations(entry);
+                          const denoms = getEntryDenominations(entry, dailyDenominationsMap);
                           const total = getDenomTotal(denoms);
                           if (total > 0) {
                             return (

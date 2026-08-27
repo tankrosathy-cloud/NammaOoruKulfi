@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
-import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, saveDailyDenominations } from '../store';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations } from '../store';
 import { format, subDays, parseISO } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -43,12 +43,15 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [appliedFromDenomsFeedback, setAppliedFromDenomsFeedback] = useState<string | null>(null);
 
+  const isDirtyRef = React.useRef(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
   // Date-wise Denominations State
   const [denominations, setDenominations] = useState<Denominations>(DEFAULT_DENOMS);
+  const isDenomsDirtyRef = React.useRef(false);
 
   // Pre-fill previous balances if any
   const [prevBalances, setPrevBalances] = useState({ stick: 0, pot: 0 });
-
   const [formData, setFormData] = useState({
     stickLoaded: '', stickBalance: '',
     potLoaded: '', potBalance: '',
@@ -57,8 +60,20 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     notes: ''
   });
 
+  const lastLoadedDateRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    isDenomsDirtyRef.current = false;
+    isDirtyRef.current = false;
+    lastLoadedDateRef.current = null;
+    setAutoSaveStatus('idle');
+  }, [date]);
+
   useEffect(() => {
     if (!entries) return;
+    if (lastLoadedDateRef.current === date) return;
+    lastLoadedDateRef.current = date;
+    
     const existingEntry = entries.find(e => e.date === date);
     let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
 
@@ -163,7 +178,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
       }
     }
 
-    setDenominations(loadedDenoms);
+    if (!isDenomsDirtyRef.current) {
+      setDenominations(loadedDenoms);
+    }
     setAppliedFromDenomsFeedback(null);
 
     const prevEntry = [...entries]
@@ -181,19 +198,18 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   }, [date, entries, dailyDenominationsMap]);
 
   const handleDenominationsChange = (newDenoms: Denominations) => {
+    isDenomsDirtyRef.current = true;
+    isDirtyRef.current = true;
     setDenominations(newDenoms);
     try {
       localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(newDenoms));
     } catch (e) {
       console.warn('Failed to save draft denominations to localStorage', e);
     }
-    // Instantly sync to Cloud Firestore so all other logged in users (e.g. Nadeem) see it in realtime
-    saveDailyDenominations(date, newDenoms).catch(err => {
-      console.warn('Real-time denomination cloud sync error:', err);
-    });
   };
 
   const handleApplyCashBagTotal = (total: number) => {
+    isDirtyRef.current = true;
     setFormData(prev => ({ ...prev, cashBagTotal: String(total) }));
     setAppliedFromDenomsFeedback(`Applied ₹${total.toLocaleString('en-IN')} from Currency Denominations`);
     setTimeout(() => setAppliedFromDenomsFeedback(null), 6000);
@@ -264,6 +280,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const finalAmount = actualAmount - bonus;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    isDirtyRef.current = true;
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -279,6 +296,55 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
 
   
   
+
+  useEffect(() => {
+    if (!isDirtyRef.current) return;
+
+    setAutoSaveStatus('saving');
+    const timer = setTimeout(async () => {
+      const safeId = entryId && entryId.trim() !== '' ? entryId : uuidv4();
+      if (!entryId) setEntryId(safeId);
+
+      const entry: DailyEntry = {
+        id: safeId,
+        date,
+        stickLoaded: parseInt(formData.stickLoaded) || 0,
+        ...(formData.stickBalance !== '' ? { stickBalance: parseInt(formData.stickBalance) } : {}),
+        stickSold,
+        potLoaded: parseInt(formData.potLoaded) || 0,
+        ...(formData.potBalance !== '' ? { potBalance: parseInt(formData.potBalance) } : {}),
+        potSold,
+        cashBagLoaded: parseInt(formData.cashBagLoaded) || 0,
+        cashBagTotal: parseInt(formData.cashBagTotal) || 0,
+        phonePe: parseInt(formData.phonePe) || 0,
+        discount,
+        requiredAmount,
+        actualAmount,
+        shortage,
+        bonus: parseInt(formData.bonus) || 0,
+        finalAmount,
+        expenses: platformRent,
+        additionalExpenses: parseInt(formData.additionalExpenses) || 0,
+        expenseDetails: formData.expenseDetails,
+        notes: formData.notes,
+        denominations
+      };
+
+      try {
+        await saveEntry(entry);
+        try {
+          localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+        } catch {}
+        setAutoSaveStatus('saved');
+        setIsEditing(true);
+      } catch (err) {
+        console.error('Auto-save failed:', err);
+        setAutoSaveStatus('error');
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [formData, denominations, date, stickSold, potSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -374,25 +440,6 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
           >
             Yesterday ({format(parseISO(yesterdayStr), 'dd MMM')}) {entries.some(e => e.date === yesterdayStr) ? '✓' : ''}
           </button>
-          
-          {sortedEntries
-            .filter(e => e.date !== todayStr && e.date !== yesterdayStr)
-            .slice(0, 3)
-            .map(e => (
-              <button
-                key={e.id || e.date}
-                type="button"
-                onClick={() => setDate(e.date)}
-                className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all flex items-center gap-1 ${
-                  date === e.date
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>{format(parseISO(e.date), 'dd MMM')}</span>
-                <span className="text-[9px] opacity-80">✓</span>
-              </button>
-            ))}
         </div>
       </div>
 
@@ -475,20 +522,6 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                   >
                     Yesterday
                   </button>
-                  {entries.length > 0 && entries[0].date && (
-                    <button
-                      type="button"
-                      onClick={() => setDate(entries[0].date)}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
-                        date === entries[0].date
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                      }`}
-                      title={`Jump to latest logged entry (${entries[0].date})`}
-                    >
-                      Latest ({format(parseISO(entries[0].date), 'dd MMM')})
-                    </button>
-                  )}
                 </div>
               </div>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
@@ -648,9 +681,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
           </CardContent>
         </Card>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex gap-2 sm:gap-3">
           {onCancel && (
-            <Button type="button" variant="outline" className="sm:w-1/4 h-12 text-xs font-black uppercase tracking-wider border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
+            <Button type="button" variant="outline" className="w-20 sm:w-28 flex-none h-12 text-[10px] sm:text-xs font-black uppercase tracking-wider border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300" size="lg" disabled={loading} onClick={onCancel}>
               CANCEL
             </Button>
           )}
@@ -658,15 +691,18 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
           <Button
             type="button"
             variant="outline"
+            title="Share on WhatsApp"
             onClick={() => setShowWhatsAppModal(true)}
-            className="sm:w-1/3 h-12 text-xs font-black uppercase tracking-wider border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            className="w-12 sm:w-auto px-0 sm:px-4 flex-none h-12 text-xs font-black uppercase tracking-wider border-emerald-500/50 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 flex items-center justify-center gap-2 cursor-pointer shadow-sm"
           >
-            <MessageCircle className="w-4 h-4 text-emerald-600" />
-            <span>Share on WhatsApp</span>
+            <MessageCircle className="w-5 h-5 sm:w-4 sm:h-4 text-emerald-600" />
+            <span className="hidden sm:inline">Share</span>
           </Button>
 
-          <Button type="submit" disabled={loading} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer">
-            {loading ? 'SAVING...' : isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY'}
+          <Button type="submit" disabled={loading || autoSaveStatus === 'saving'} className={`flex-1 font-black text-sm sm:text-base uppercase h-12 rounded-xl shadow-md transition-all cursor-pointer ${
+            autoSaveStatus === 'saved' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-cyan-600 hover:bg-cyan-700 text-white'
+          }`}>
+            {loading || autoSaveStatus === 'saving' ? 'SAVING...' : autoSaveStatus === 'saved' ? 'DONE (SAVED)' : isEditing ? 'UPDATE ENTRY' : 'SAVE ENTRY'}
           </Button>
         </div>
       </form>

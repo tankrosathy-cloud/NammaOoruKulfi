@@ -47,6 +47,9 @@ import { calculateAvailableStock, calculateDailyStockLedger, DayStockLedgerRow }
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
+  const currentUsername = (auth.currentUser?.email || '').split('@')[0].toLowerCase();
+  const isAdminUser = currentUsername === 'admin' || currentUsername === 'tankrosathy';
+
   const [activeTab, setActiveTab] = useState<'settings' | 'inventory' | 'planner' | 'export' | 'database'>(
     role === 'owner' ? 'settings' : 'inventory'
   );
@@ -149,13 +152,14 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
   
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [selectedInventoryDate, setSelectedInventoryDate] = useState<string>(todayStr);
-  const [stockSubView, setStockSubView] = useState<'10day' | 'inspector' | 'flavours'>('10day');
+  const [stockSubView, setStockSubView] = useState<'10day' | 'inspector'>('10day');
   const [historyRangeDays, setHistoryRangeDays] = useState<number>(10);
   const [isEditingInventory, setIsEditingInventory] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [parsedInvoice, setParsedInvoice] = useState<any>(null);
   const [deliveryAddQuantity, setDeliveryAddQuantity] = useState<{ stick: string; pot: string }>({ stick: '', pot: '' });
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [inventoryData, setInventoryData] = useState<{
@@ -307,6 +311,22 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
     };
     await saveInventoryStock(item);
     setIsEditingInventory(false);
+    reloadInventory();
+  };
+
+  const handleResetInventory = async () => {
+    const item: InventoryStock = {
+      id: 'global',
+      stickQuantity: 0,
+      potQuantity: 0,
+      lastUpdatedDate: todayStr,
+      stickFlavours: [],
+      potFlavours: []
+    };
+    
+    await saveInventoryStock(item);
+    setIsEditingInventory(false);
+    setShowResetModal(false);
     reloadInventory();
   };
 
@@ -527,13 +547,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
             <Download className="w-3.5 h-3.5 shrink-0" />
             <span>Export</span>
           </button>
-          <button
-            onClick={() => setActiveTab('database')}
-            className={`flex-1 min-w-[78px] sm:min-w-0 h-9 sm:h-10 px-2 sm:px-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'database' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
-          >
-            <Database className="w-3.5 h-3.5 shrink-0" />
-            <span>Database</span>
-          </button>
+          {isAdminUser && (
+            <button
+              onClick={() => setActiveTab('database')}
+              className={`flex-1 min-w-[78px] sm:min-w-0 h-9 sm:h-10 px-2 sm:px-3 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'database' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+            >
+              <Database className="w-3.5 h-3.5 shrink-0" />
+              <span>Database</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -576,6 +598,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
                 >
                   <Edit2 className="w-3.5 h-3.5 mr-1" /> OVERRIDE STOCK
                 </Button>
+                {role === 'owner' && (
+                  <Button 
+                    onClick={() => setShowResetModal(true)} 
+                    variant="outline"
+                    className="border-red-500 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-900/20 font-bold rounded-xl h-8 px-3 text-xs shadow-sm cursor-pointer"
+                  >
+                    RESET TO ZERO
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -778,17 +809,6 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
             >
               <History className="w-3.5 h-3.5 shrink-0" />
               <span>Daily Inspector</span>
-            </button>
-            <button
-              onClick={() => setStockSubView('flavours')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                stockSubView === 'flavours'
-                  ? 'bg-pink-500 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5 shrink-0" />
-              <span>Flavours</span>
             </button>
           </div>
 
@@ -1349,67 +1369,6 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
             </div>
           )}
 
-          {/* ========================================================================= */}
-          {/* 3. VIEW: FLAVOURS & INVOICE MANAGEMENT */}
-          {/* ========================================================================= */}
-          {stockSubView === 'flavours' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Stick Flavours */}
-                <Card className="border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
-                        <Layers className="w-4 h-4" /> Stick Kulfi Flavours ({inventory.stickFlavours?.length || 0})
-                      </h4>
-                    </div>
-
-                    {(!inventory.stickFlavours || inventory.stickFlavours.length === 0) ? (
-                      <p className="text-xs text-slate-400 font-bold uppercase py-4 text-center">No stick flavours recorded</p>
-                    ) : (
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                        {inventory.stickFlavours.map((flavour, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                            <span className="font-bold text-slate-900 dark:text-white">{flavour.name}</span>
-                            <span className="font-black text-cyan-600 dark:text-cyan-400 px-2 py-0.5 bg-cyan-100 dark:bg-cyan-950/60 rounded-lg">
-                              {flavour.quantity} pcs
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Pot Flavours */}
-                <Card className="border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <CardContent className="p-6 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-2">
-                        <Layers className="w-4 h-4" /> Pot Kulfi Flavours ({inventory.potFlavours?.length || 0})
-                      </h4>
-                    </div>
-
-                    {(!inventory.potFlavours || inventory.potFlavours.length === 0) ? (
-                      <p className="text-xs text-slate-400 font-bold uppercase py-4 text-center">No pot flavours recorded</p>
-                    ) : (
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                        {inventory.potFlavours.map((flavour, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                            <span className="font-bold text-slate-900 dark:text-white">{flavour.name}</span>
-                            <span className="font-black text-pink-600 dark:text-pink-400 px-2 py-0.5 bg-pink-100 dark:bg-pink-950/60 rounded-lg">
-                              {flavour.quantity} pcs
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          )}
-
           {/* Delivery Addition Modal */}
           {showDeliveryModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -1610,8 +1569,24 @@ export default function SettingsPage({ role }: { role: 'owner' | 'manager' }) {
       )}
 
       {/* DATABASE TAB */}
-      {activeTab === 'database' && (
+      {activeTab === 'database' && isAdminUser && (
         <SupabaseManager />
+      )}
+
+      {/* RESET INVENTORY CONFIRMATION MODAL */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase">Are you sure?</h3>
+            <p className="text-sm font-bold text-slate-600 dark:text-slate-400">
+              This will wipe all current baseline stock and start fresh from today. All quantities will be set to 0.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setShowResetModal(false)}>CANCEL</Button>
+              <Button type="button" className="flex-1 bg-red-600 hover:bg-red-700 text-white" onClick={handleResetInventory}>CONFIRM RESET</Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* INVOICE CONFIRMATION MODAL */}

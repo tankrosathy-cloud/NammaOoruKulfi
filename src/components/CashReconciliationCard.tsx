@@ -296,8 +296,8 @@ export default function CashReconciliationCard({
                   Denomination Currency Counter {formattedDateStr ? `(${formattedDateStr})` : ''}
                 </h5>
                 <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Live Cloud Synced
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  Saved in Cloud
                 </span>
                 {cloudRecord?.updatedBy && (
                   <span className="text-[9px] font-medium text-slate-500">

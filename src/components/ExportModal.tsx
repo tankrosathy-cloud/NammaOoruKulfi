@@ -141,7 +141,7 @@ export default function ExportModal({
         <div className="p-6 space-y-6 flex-1">
           
           {/* Scope Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
               <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
@@ -263,7 +263,7 @@ export default function ExportModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Daily Sales CSV */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center font-bold text-xs">
                     <TrendingUp className="w-3.5 h-3.5" />
@@ -285,7 +285,7 @@ export default function ExportModal({
               </div>
 
               {/* Inventory Date-Wise CSV */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">
                     <Package className="w-3.5 h-3.5" />
@@ -307,7 +307,7 @@ export default function ExportModal({
               </div>
 
               {/* Event Orders CSV */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold text-xs">
                     <PartyPopper className="w-3.5 h-3.5" />
@@ -329,7 +329,7 @@ export default function ExportModal({
               </div>
 
               {/* Profit Taken CSV */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
                     <Wallet className="w-3.5 h-3.5" />
@@ -351,7 +351,7 @@ export default function ExportModal({
               </div>
 
               {/* Expenses CSV */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between sm:col-span-2">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between sm:col-span-2">
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-xs">
                     <Receipt className="w-3.5 h-3.5" />

@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from './types';
 import { db, auth } from './lib/firebase';
-import { collection, onSnapshot, doc, getDocs, getDocsFromServer, getDocFromServer, setDoc, deleteDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDocs, getDocsFromServer, getDocFromServer, setDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { INITIAL_AUGUST_ENTRIES, INITIAL_AUGUST_EXPENSES, INITIAL_AUGUST_SPECIAL_ORDERS } from './lib/augustDataset';
 import { isSupabaseConfigured, getSupabaseClient } from './lib/supabase';
@@ -179,7 +179,7 @@ export async function getEntries(): Promise<DailyEntry[]> {
   }
 }
 
-export async function saveDailyDenominations(date: string, denominations: Denominations): Promise<void> {
+export async function saveDailyDenominations(date: string, denominations: Denominations, skipEntrySync: boolean = false): Promise<void> {
   const user = auth.currentUser;
   triggerWriteStart();
 
@@ -206,17 +206,19 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
     await setDoc(doc(db, 'daily_denominations', date), record, { merge: true });
 
     // 2. Also update entry document if one exists for this date in Firestore
-    try {
-      const q = query(collection(db, 'entries'));
-      const snap = await getDocs(q);
-      const matching = snap.docs.find(d => (d.data() as DailyEntry).date === date);
-      if (matching) {
-        await setDoc(doc(db, 'entries', matching.id), {
-          denominations,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      }
-    } catch {}
+    if (!skipEntrySync) {
+      try {
+        const q = query(collection(db, 'entries'), where('date', '==', date));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const matching = snap.docs[0];
+          await setDoc(doc(db, 'entries', matching.id), {
+            denominations,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      } catch {}
+    }
 
     // 3. Save locally as offline fallback
     try {
@@ -240,22 +242,27 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
   };
 
   try {
+    const promises: Promise<any>[] = [];
+
     if (isSupabaseConfigured()) {
-      await upsertEntryToSupabase(entryWithUser, user?.uid || '');
+      promises.push(upsertEntryToSupabase(entryWithUser, user?.uid || ''));
     } else {
-      await setDoc(doc(db, 'entries', entry.id), entryWithUser);
+      promises.push(setDoc(doc(db, 'entries', entry.id), entryWithUser));
     }
 
     // Sync denominations to daily_denominations collection if present
     if (entry.denominations) {
-      try {
-        await saveDailyDenominations(entry.date, entry.denominations);
-      } catch (err) {
-        console.warn("Could not dual-sync daily denominations:", err);
-      }
+      promises.push(
+        saveDailyDenominations(entry.date, entry.denominations, true).catch(err => {
+          console.warn("Could not dual-sync daily denominations:", err);
+        })
+      );
     }
 
-    await addLog('SAVE_ENTRY', `Saved daily entry for ${entry.date}`);
+    promises.push(addLog('SAVE_ENTRY', `Saved daily entry for ${entry.date}`));
+
+    await Promise.all(promises);
+
     triggerDataUpdated('entry', entry.id);
   } catch (error) {
     console.error("Error saving entry:", error);
@@ -979,24 +986,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         console.warn("Could not bind specials snapshot:", e);
       }
+    }
 
-      try {
-        const unsubDenoms = onSnapshot(
-          collection(db, 'daily_denominations'),
-          (snapshot) => {
-            const dMap: Record<string, DailyDenominationsRecord> = {};
-            snapshot.docs.forEach(docSnap => {
-              const d = docSnap.data() as DailyDenominationsRecord;
-              dMap[d.date || docSnap.id] = d;
-            });
-            setDailyDenominationsMap(prev => ({ ...prev, ...dMap }));
-          },
-          (err) => console.error("Realtime denominations listener error:", err)
-        );
-        unsubs.push(unsubDenoms);
-      } catch (e) {
-        console.warn("Could not bind daily_denominations snapshot:", e);
-      }
+    // Always attach the daily_denominations listener regardless of Supabase config
+    // This allows real-time keystroke draft syncing across all clients via Firebase.
+    try {
+      const unsubDenoms = onSnapshot(
+        collection(db, 'daily_denominations'),
+        (snapshot) => {
+          const dMap: Record<string, DailyDenominationsRecord> = {};
+          snapshot.docs.forEach(docSnap => {
+            const d = docSnap.data() as DailyDenominationsRecord;
+            dMap[d.date || docSnap.id] = d;
+          });
+          setDailyDenominationsMap(prev => ({ ...prev, ...dMap }));
+        },
+        (err) => console.error("Realtime denominations listener error:", err)
+      );
+      unsubs.push(unsubDenoms);
+    } catch (e) {
+      console.warn("Could not bind daily_denominations snapshot globally:", e);
     }
 
     refreshAllFromServer();

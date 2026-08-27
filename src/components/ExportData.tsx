@@ -129,7 +129,7 @@ export default function ExportData() {
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-850 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setExportScope('month')}
@@ -209,27 +209,27 @@ export default function ExportData() {
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <TrendingUp className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                 <span className="truncate">1. Daily Sales</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <Receipt className="w-3.5 h-3.5 text-pink-600 shrink-0" />
                 <span className="truncate">2. Expenses</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <Package className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                 <span className="truncate">3. Inventory Date-Wise</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <PartyPopper className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                 <span className="truncate">4. Event Orders</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span className="truncate">5. Profit Taken</span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-slate-850 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+              <div className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-800 flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
                 <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                 <span className="truncate">6. Summary KPIs</span>
               </div>
@@ -253,7 +253,7 @@ export default function ExportData() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-cyan-600" />
                   <span className="text-xs font-black text-slate-900 dark:text-white">Daily Sales CSV</span>
@@ -269,7 +269,7 @@ export default function ExportData() {
                 </Button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Package className="w-4 h-4 text-amber-600" />
                   <span className="text-xs font-black text-slate-900 dark:text-white">Inventory Date-Wise CSV</span>
@@ -285,7 +285,7 @@ export default function ExportData() {
                 </Button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PartyPopper className="w-4 h-4 text-purple-600" />
                   <span className="text-xs font-black text-slate-900 dark:text-white">Event Orders CSV</span>
@@ -301,7 +301,7 @@ export default function ExportData() {
                 </Button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-emerald-600" />
                   <span className="text-xs font-black text-slate-900 dark:text-white">Profit Taken CSV</span>
@@ -317,7 +317,7 @@ export default function ExportData() {
                 </Button>
               </div>
 
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-850 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between sm:col-span-2">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between sm:col-span-2">
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4 h-4 text-pink-600" />
                   <span className="text-xs font-black text-slate-900 dark:text-white">Expenses CSV</span>
