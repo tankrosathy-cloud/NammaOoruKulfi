@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Check, Calendar, User, Fuel, Utensils, Wrench, 
-  Package, Home, Receipt, Loader2, Sparkles, Coins 
+  Package, Home, Receipt, Loader2, Sparkles, Coins, PiggyBank, Boxes
 } from 'lucide-react';
 import { saveExpense } from '../store';
 import { ExpenseEntry } from '../types';
@@ -22,6 +22,8 @@ const CATEGORIES_WITH_ICONS = [
   { name: 'Maintenance', icon: Wrench, color: 'text-rose-500 bg-rose-500/10' },
   { name: 'Salary', icon: User, color: 'text-purple-500 bg-purple-500/10' },
   { name: 'Rent', icon: Home, color: 'text-indigo-500 bg-indigo-500/10' },
+  { name: 'Chit', icon: PiggyBank, color: 'text-pink-500 bg-pink-500/10' },
+  { name: 'Inventory', icon: Boxes, color: 'text-teal-500 bg-teal-500/10' },
   { name: 'Others', icon: Receipt, color: 'text-cyan-500 bg-cyan-500/10' }
 ];
 
@@ -32,6 +34,8 @@ const QUICK_TAGS: Record<string, string[]> = {
   'Maintenance': ['Cart repair', 'Tyre puncture', 'Bulb replacement', 'Cleaning brush'],
   'Salary': ['Daily wage', 'Staff advance', 'Part-time helper'],
   'Rent': ['Daily spot rent', 'Weekly rent', 'Storage room'],
+  'Chit': ['Daily chit', 'Monthly chit installment', 'Chit bonus'],
+  'Inventory': ['Stock purchase', 'Raw materials', 'Packaging stock'],
   'Others': ['Tea bill', 'Miscellaneous', 'Donation', 'Stationery']
 };
 

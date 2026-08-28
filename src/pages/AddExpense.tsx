@@ -23,7 +23,7 @@ export default function AddExpense({ onSave, onCancel, initialExpense }: { onSav
   });
 
   const allowedUsers = ['Nadeem', 'Admin', 'Yuvaraj'];
-  const categories = ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Others'];
+  const categories = ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Chit', 'Inventory', 'Others'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
