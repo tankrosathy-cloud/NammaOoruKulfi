@@ -9,7 +9,7 @@ import { calculatePrediction } from '../lib/prediction';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Cell, AreaChart, Area, PieChart, Pie } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 import { motion } from 'motion/react';
-import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import { WhatsAppSummaryModal } from '../components/WhatsAppSummaryModal';
 import { calculateAvailableStock } from '../lib/inventoryUtils';
 
 const containerVariants = {
@@ -418,7 +418,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5 pt-0">
-            <div className="text-3xl font-black leading-none text-pink-600 dark:text-pink-400">{formatCurrency(stats.monthlyExpenses)}</div>
+            <div className="text-xl sm:text-2xl font-black leading-none text-pink-600 dark:text-pink-400 truncate">{formatCurrency(stats.monthlyExpenses)}</div>
             <p className="text-[10px] font-extrabold text-pink-600 dark:text-pink-400 uppercase tracking-wider mt-2">This month</p>
           </CardContent>
         </Card>
@@ -429,7 +429,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5 pt-0">
-            <div className="text-3xl font-black leading-none text-orange-500 dark:text-orange-400">{formatCurrency(stats.monthlyShortage)}</div>
+            <div className="text-xl sm:text-2xl font-black leading-none text-orange-500 dark:text-orange-400 truncate">{formatCurrency(stats.monthlyShortage)}</div>
             <p className="text-[10px] font-extrabold text-orange-500 dark:text-orange-400 uppercase tracking-wider mt-2">This month</p>
           </CardContent>
         </Card>
@@ -466,7 +466,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
         <h3 className={`text-xs font-black uppercase tracking-widest ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
           Inventory Status
         </h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className={`grid gap-4 ${settings?.enablePlate ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2'}`}>
           <Card className={cardBg}>
             <CardContent className="p-4 flex flex-col justify-center">
               <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-600 dark:text-cyan-400 flex items-center gap-1">
@@ -487,6 +487,18 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
             </CardContent>
           </Card>
 
+          {settings?.enablePlate && (
+            <Card className={cardBg}>
+              <CardContent className="p-4 flex flex-col justify-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <Package className="w-3 h-3" /> Plate Sold (Month)
+                </p>
+                <div className="text-2xl font-black text-amber-600 dark:text-amber-400">{inventoryStats.totalPlateSoldThisMonth || 0} <span className="text-sm font-bold">pcs</span></div>
+                <p className="text-[10px] text-amber-700/70 dark:text-amber-400/70 font-semibold mt-0.5">Avg: {inventoryStats.avgPlateSoldThisMonth || 0} / day</p>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className={cardBg}>
             <CardContent className="p-4 flex flex-col justify-center">
               <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-cyan-800 dark:text-cyan-500">
@@ -504,6 +516,17 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
               <div className="text-2xl font-black text-pink-800 dark:text-pink-500">{inventoryStats.availablePot} <span className="text-sm font-bold">pcs</span></div>
             </CardContent>
           </Card>
+
+          {settings?.enablePlate && (
+            <Card className={cardBg}>
+              <CardContent className="p-4 flex flex-col justify-center">
+                <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-amber-800 dark:text-amber-500">
+                  Plate Available
+                </p>
+                <div className="text-2xl font-black text-amber-800 dark:text-amber-500">{inventoryStats.availablePlate || 0} <span className="text-sm font-bold">pcs</span></div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </motion.div>
 

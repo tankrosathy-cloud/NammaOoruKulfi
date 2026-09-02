@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS public.entries (
     pot_loaded INT DEFAULT 0,
     pot_balance INT DEFAULT 0,
     pot_sold INT DEFAULT 0,
+    plate_loaded INT DEFAULT 0,
+    plate_balance INT DEFAULT 0,
+    plate_sold INT DEFAULT 0,
     cash_bag_loaded NUMERIC(10, 2) DEFAULT 0,
     cash_bag_total NUMERIC(10, 2) DEFAULT 0,
     phone_pe NUMERIC(10, 2) DEFAULT 0,
@@ -56,6 +59,7 @@ CREATE TABLE IF NOT EXISTS public.special_orders (
     event_type TEXT NOT NULL,
     stick_quantity INT DEFAULT 0,
     pot_quantity INT DEFAULT 0,
+    plate_quantity INT DEFAULT 0,
     amount_received NUMERIC(10, 2) DEFAULT 0,
     notes TEXT DEFAULT '',
     user_id TEXT DEFAULT '',
@@ -68,8 +72,10 @@ CREATE TABLE IF NOT EXISTS public.inventory (
     id TEXT PRIMARY KEY DEFAULT 'global',
     stick_quantity INT DEFAULT 0,
     pot_quantity INT DEFAULT 0,
+    plate_quantity INT DEFAULT 0,
     stick_flavours JSONB DEFAULT '[]'::jsonb,
     pot_flavours JSONB DEFAULT '[]'::jsonb,
+    plate_flavours JSONB DEFAULT '[]'::jsonb,
     last_updated_date DATE DEFAULT CURRENT_DATE,
     user_id TEXT DEFAULT '',
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -82,6 +88,13 @@ CREATE TABLE IF NOT EXISTS public.settings (
     pot_price NUMERIC(10, 2) DEFAULT 50,
     plate_price NUMERIC(10, 2) DEFAULT 75,
     monthly_goal NUMERIC(12, 2) DEFAULT 150000,
+    enable_stick BOOLEAN DEFAULT true,
+    enable_pot BOOLEAN DEFAULT true,
+    enable_plate BOOLEAN DEFAULT true,
+    enable_platform_fee BOOLEAN DEFAULT false,
+    platform_fee NUMERIC(10, 2) DEFAULT 0,
+    expense_paid_by_names JSONB DEFAULT '["Nadeem", "Partner", "Store Cash"]'::jsonb,
+    expense_categories JSONB DEFAULT '["Wages", "Water", "Snacks", "Purchases", "Others"]'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
@@ -167,11 +180,11 @@ ON CONFLICT (id) DO UPDATE SET
 INSERT INTO public.inventory (id, stick_quantity, pot_quantity, last_updated_date, stick_flavours, pot_flavours)
 VALUES (
     'global',
-    771,
-    28,
+    0,
+    0,
     '2026-08-23',
-    '[{"name": "Pista badam", "quantity": 22}]'::jsonb,
-    '[{"name": "Badam", "quantity": 0}, {"name": "Pistha", "quantity": 12}, {"name": "Pistha badam", "quantity": 12}, {"name": "Shahi gulab", "quantity": 24}]'::jsonb
+    '[{"name": "Pista badam", "quantity": 0}]'::jsonb,
+    '[{"name": "Badam", "quantity": 0}, {"name": "Pistha", "quantity": 0}, {"name": "Pistha badam", "quantity": 0}, {"name": "Shahi gulab", "quantity": 0}]'::jsonb
 )
 ON CONFLICT (id) DO UPDATE SET
     stick_quantity = EXCLUDED.stick_quantity,
@@ -213,8 +226,8 @@ INSERT INTO public.entries (id, date, stick_loaded, stick_balance, stick_sold, p
 ('entry-2026-08-10', '2026-08-10', 211, 131, 80, 12, 8, 4, 1265, 2010, 2620, 20, 4630, 4630, 0, 4630, 15, 'Coffee'),
 ('entry-2026-08-11', '2026-08-11', 179, 113, 66, 8, 7, 1, 1320, 2385, 1600, 0, 3995, 3985, 10, 3985, 15, ''),
 ('entry-2026-08-12', '2026-08-12', 197, 113, 84, 7, 1, 6, 1505, 3440, 1690, 20, 5130, 5130, 0, 5130, 15, ''),
-('entry-2026-08-13', '2026-08-13', 161, 96, 65, 1, 0, 1, 1540, 2890, 1270, 0, 4175, 4160, 15, 4160, 15, ''),
-('entry-2026-08-14', '2026-08-14', 222, 157, 65, 0, 0, 0, 1485, 2830, 1200, 0, 4070, 4030, 40, 4030, 15, ''),
+('entry-2026-08-13', '2026-08-13', 161, 96, 65, 1, 0, 1, 1540, 090, 1270, 0, 4175, 4160, 15, 4160, 15, ''),
+('entry-2026-08-14', '2026-08-14', 222, 157, 65, 0, 0, 0, 1485, 030, 1200, 0, 4070, 4030, 40, 4030, 15, ''),
 ('entry-2026-08-15', '2026-08-15', 250, 47, 203, 0, 0, 0, 1350, 5055, 4150, 250, 9205, 9205, 0, 9205, 15, ''),
 ('entry-2026-08-16', '2026-08-16', 251, 47, 204, 0, 0, 0, 1405, 4770, 4700, 80, 9470, 9470, 0, 9470, 15, 'Raj 40 friend'),
 ('entry-2026-08-17', '2026-08-17', 179, 102, 77, 0, 0, 0, 1500, 2695, 1740, 70, 4495, 4435, 60, 4435, 15, 'Friend 40'),
@@ -222,7 +235,7 @@ INSERT INTO public.entries (id, date, stick_loaded, stick_balance, stick_sold, p
 ('entry-2026-08-19', '2026-08-19', 191, 100, 91, 0, 0, 0, 1440, 2925, 2060, 80, 4985, 4985, 0, 4985, 15, 'Friend 40'),
 ('entry-2026-08-20', '2026-08-20', 173, 116, 57, 0, 0, 0, 1225, 2350, 1080, 0, 3430, 3430, 0, 3430, 15, 'KASTHURI BAKES 20-FRIEND 40'),
 ('POPrwnRfnGCuz2DcZ2D1', '2026-08-21', 201, 35, 166, 0, 0, 0, 1450, 4875, 3200, 0, 8075, 8075, 0, 8075, 15, ''),
-('entry-2026-08-22', '2026-08-22', 287, 142, 145, 0, 0, 0, 1505, 3770, 3460, 20, 7270, 7230, 40, 7230, 15, ''),
+('entry-2026-08-22', '2026-08-22', 07, 142, 145, 0, 0, 0, 1505, 3770, 3460, 20, 7270, 7230, 40, 7230, 15, ''),
 ('entry-2026-08-23', '2026-08-23', 0, 0, 0, 0, 0, 0, 1370, 0, 0, 0, 1370, 0, 1370, 0, 0, '')
 ON CONFLICT (id) DO UPDATE SET
     stick_loaded = EXCLUDED.stick_loaded,

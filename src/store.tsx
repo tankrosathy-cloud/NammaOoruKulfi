@@ -29,16 +29,37 @@ import {
 
 export const ADMIN_USERNAMES = ['nadeem', 'admin', 'administrator', 'yuvaraj', 'tankrosathy'];
 
+export let currentFranchiseId: string | null = null;
+export function setCurrentFranchiseId(id: string | null) {
+  currentFranchiseId = id;
+}
+
+export function getDenomsStorageKey(date: string, franchiseId?: string | null): string {
+  const fid = (franchiseId !== undefined && franchiseId !== null && franchiseId !== '') 
+    ? franchiseId 
+    : (currentFranchiseId || 'global');
+  return `kulfi_denoms_${fid}_${date}`;
+}
+
+export let currentUserRole: 'owner' | 'staff' = 'owner'; // Default to owner for backwards compatibility in UI until auth loads
+
+export function setCurrentUserRole(role: 'owner' | 'staff') {
+  currentUserRole = role;
+}
+
 export function isUserAdminOrOwner(userOrEmail?: string | null): boolean {
-  if (!userOrEmail) return true;
-  const username = userOrEmail.includes('@') ? userOrEmail.split('@')[0].toLowerCase() : userOrEmail.toLowerCase();
-  return ADMIN_USERNAMES.includes(username);
+  return currentUserRole === 'owner';
 }
 
 const DEFAULT_SETTINGS: Settings = {
+  enableStick: true,
+  enablePot: true,
+  enablePlate: true,
+  enablePlatformFee: false,
   stickPrice: 40,
   potPrice: 50,
   platePrice: 75,
+  platformFee: 0,
   monthlyGoal: 150000,
 };
 
@@ -101,7 +122,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
   // 2. Fallback or parallel seed to Firestore
   const user = auth.currentUser;
   try {
-    const entriesSnap = await getDocs(collection(db, 'entries'));
+    const entriesSnap = await getDocs(query(collection(db, 'entries'), where('franchiseId', '==', currentFranchiseId || 'NONE')));
     const existingDates = new Set(entriesSnap.docs.map(d => (d.data() as DailyEntry).date));
 
     for (const entry of INITIAL_AUGUST_ENTRIES) {
@@ -115,7 +136,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
       }
     }
 
-    const expensesSnap = await getDocs(collection(db, 'expenses'));
+    const expensesSnap = await getDocs(query(collection(db, 'expenses'), where('franchiseId', '==', currentFranchiseId || 'NONE')));
     const existingExpIds = new Set(expensesSnap.docs.map(d => d.id));
     const existingExpSignatures = new Set(expensesSnap.docs.map(d => {
       const data = d.data() as ExpenseEntry;
@@ -165,23 +186,22 @@ export async function getEntries(): Promise<DailyEntry[]> {
     }
   }
 
-  const q = query(collection(db, 'entries'));
+  const q = query(collection(db, 'entries'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
   try {
     const snapshot = await getDocs(q);
     const docs = snapshot.docs.map(doc => doc.data() as DailyEntry);
-    const existingDates = new Set(docs.map(d => d.date));
-    const missing = INITIAL_AUGUST_ENTRIES.filter(e => !existingDates.has(e.date));
-    const all = [...docs, ...missing];
-    return all.sort((a, b) => a.date.localeCompare(b.date));
+    return docs.sort((a, b) => a.date.localeCompare(b.date));
   } catch (error) {
     console.error("Error fetching entries:", error);
-    return [...INITIAL_AUGUST_ENTRIES].sort((a, b) => a.date.localeCompare(b.date));
+    return [];
   }
 }
 
-export async function saveDailyDenominations(date: string, denominations: Denominations, skipEntrySync: boolean = false): Promise<void> {
+export async function saveDailyDenominations(date: string, denominations: Denominations, skipEntrySync: boolean = false, fid?: string | null): Promise<void> {
   const user = auth.currentUser;
   triggerWriteStart();
+
+  const effectiveFid = (fid !== undefined && fid !== null && fid !== '') ? fid : (currentFranchiseId || 'NONE');
 
   const total = (
     ((Number(denominations.n500) || 0) * 500) +
@@ -194,6 +214,7 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
   );
 
   const record: DailyDenominationsRecord = {
+    franchiseId: effectiveFid,
     date,
     denominations,
     total,
@@ -202,13 +223,14 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
   };
 
   try {
-    // 1. Write to dedicated Firestore collection 'daily_denominations' with date as document ID
-    await setDoc(doc(db, 'daily_denominations', date), record, { merge: true });
+    // 1. Write to dedicated Firestore collection 'daily_denominations' with franchise-scoped document ID
+    const docId = (effectiveFid && effectiveFid !== 'NONE') ? `${effectiveFid}_${date}` : date;
+    await setDoc(doc(db, 'daily_denominations', docId), record, { merge: true });
 
     // 2. Also update entry document if one exists for this date in Firestore
     if (!skipEntrySync) {
       try {
-        const q = query(collection(db, 'entries'), where('date', '==', date));
+        const q = query(collection(db, 'entries'), where('date', '==', date), where('franchiseId', '==', effectiveFid));
         const snap = await getDocs(q);
         if (!snap.empty) {
           const matching = snap.docs[0];
@@ -220,9 +242,9 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
       } catch {}
     }
 
-    // 3. Save locally as offline fallback
+    // 3. Save locally as offline fallback scoped to franchise
     try {
-      localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+      localStorage.setItem(getDenomsStorageKey(date, effectiveFid), JSON.stringify(denominations));
     } catch {}
 
     triggerDataUpdated('denominations', date);
@@ -238,7 +260,8 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
 
   const entryWithUser = {
     ...entry,
-    userId: user?.uid || entry.userId || ''
+    userId: user?.uid || entry.userId || '',
+    franchiseId: entry.franchiseId || currentFranchiseId || 'NONE'
   };
 
   try {
@@ -253,7 +276,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     // Sync denominations to daily_denominations collection if present
     if (entry.denominations) {
       promises.push(
-        saveDailyDenominations(entry.date, entry.denominations, true).catch(err => {
+        saveDailyDenominations(entry.date, entry.denominations, true, entryWithUser.franchiseId).catch(err => {
           console.warn("Could not dual-sync daily denominations:", err);
         })
       );
@@ -310,15 +333,11 @@ export async function getSettings(): Promise<Settings> {
   }
 
   try {
-    const docRef = doc(db, 'settings', 'global');
+    const docRef = doc(db, 'settings', currentFranchiseId || 'global');
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as Settings;
-      return {
-        ...data,
-        stickPrice: 40,
-        potPrice: 50,
-      };
+      return data;
     }
   } catch (error) {
     console.error("Error fetching settings:", error);
@@ -333,7 +352,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
     if (isSupabaseConfigured()) {
       await upsertSettingsToSupabase(settings);
     } else {
-      await setDoc(doc(db, 'settings', 'global'), settings);
+      await setDoc(doc(db, 'settings', currentFranchiseId || 'global'), settings);
     }
 
     triggerDataUpdated('settings', 'global');
@@ -345,17 +364,17 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 const DEFAULT_INVENTORY: InventoryStock = {
   id: 'global',
-  stickQuantity: 771,
-  potQuantity: 28,
+  stickQuantity: 0,
+  potQuantity: 0,
   lastUpdatedDate: new Date().toISOString().split('T')[0],
   stickFlavours: [
-    { name: 'Pista badam', quantity: 22 }
+    { name: 'Pista badam', quantity: 0 }
   ],
   potFlavours: [
     { name: 'Badam', quantity: 0 },
-    { name: 'Pistha', quantity: 12 },
-    { name: 'Pistha badam', quantity: 12 },
-    { name: 'Shahi gulab', quantity: 24 }
+    { name: 'Pistha', quantity: 0 },
+    { name: 'Pistha badam', quantity: 0 },
+    { name: 'Shahi gulab', quantity: 0 }
   ]
 };
 
@@ -366,7 +385,7 @@ export async function getInventoryStock(): Promise<InventoryStock> {
   }
 
   try {
-    const docRef = doc(db, 'inventory', 'global');
+    const docRef = doc(db, 'inventory', currentFranchiseId || 'global');
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       return docSnap.data() as InventoryStock;
@@ -383,7 +402,8 @@ export async function saveInventoryStock(item: InventoryStock): Promise<void> {
   triggerWriteStart();
   const itemWithUser = {
     ...item,
-    id: 'global',
+    id: item.id || currentFranchiseId || 'global',
+    franchiseId: item.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || item.userId || '',
     updatedAt: new Date().toISOString()
   };
@@ -392,7 +412,7 @@ export async function saveInventoryStock(item: InventoryStock): Promise<void> {
     if (isSupabaseConfigured()) {
       await upsertInventoryToSupabase(itemWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'inventory', 'global'), itemWithUser);
+      await setDoc(doc(db, 'inventory', currentFranchiseId || 'global'), itemWithUser);
     }
 
     triggerDataUpdated('inventory', 'global');
@@ -410,18 +430,16 @@ export async function getExpenses(): Promise<ExpenseEntry[]> {
     }
   }
 
-  const q = query(collection(db, 'expenses'));
+  const q = query(collection(db, 'expenses'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
   try {
     const snapshot = await getDocs(q);
     const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
     const existingSignatures = new Set(docs.map(d => `${d.date}-${d.amount}-${d.category}`));
     const existingIds = new Set(docs.map(d => d.id));
-    const missing = INITIAL_AUGUST_EXPENSES.filter(e => !existingIds.has(e.id) && !existingSignatures.has(`${e.date}-${e.amount}-${e.category}`));
-    const all = [...docs, ...missing];
-    return all.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   } catch (error) {
     console.error("Error fetching expenses:", error);
-    return [...INITIAL_AUGUST_EXPENSES].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return [];
   }
 }
 
@@ -430,6 +448,7 @@ export async function saveExpense(expense: ExpenseEntry): Promise<void> {
   triggerWriteStart();
   const expenseWithUser = {
     ...expense,
+    franchiseId: expense.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || expense.userId || '',
     updatedAt: new Date().toISOString()
   };
@@ -487,6 +506,7 @@ export async function saveProfitWithdrawal(withdrawal: ProfitWithdrawal): Promis
   triggerWriteStart();
   const withdrawalWithUser = {
     ...withdrawal,
+    franchiseId: withdrawal.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || withdrawal.userId || '',
     updatedAt: new Date().toISOString()
   };
@@ -544,6 +564,7 @@ export async function saveSpecialOrder(order: SpecialOrder, _currentInventory?: 
   triggerWriteStart();
   const orderWithUser = {
     ...order,
+    franchiseId: order.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || order.userId || '',
     updatedAt: new Date().toISOString()
   };
@@ -568,6 +589,7 @@ export async function updateSpecialOrder(_oldOrder: SpecialOrder, newOrder: Spec
   triggerWriteStart();
   const orderWithUser = {
     ...newOrder,
+    franchiseId: newOrder.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || newOrder.userId || '',
     updatedAt: new Date().toISOString()
   };
@@ -639,14 +661,13 @@ export interface StoreState {
 
 const StoreContext = createContext<StoreState | null>(null);
 
-export function StoreProvider({ children }: { children: ReactNode }) {
+export function StoreProvider({ franchiseId, children }: { franchiseId?: string | null; children: ReactNode }) {
+  const activeFid = franchiseId || currentFranchiseId;
   const [databaseType, setDatabaseType] = useState<'supabase' | 'firestore'>(() => {
     return isSupabaseConfigured() ? 'supabase' : 'firestore';
   });
 
-  const [entries, setEntries] = useState<DailyEntry[]>(() => {
-    return [...INITIAL_AUGUST_ENTRIES].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  });
+  const [entries, setEntries] = useState<DailyEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesLimit, setEntriesLimit] = useState(1000);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
@@ -657,18 +678,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [inventory, setInventory] = useState<InventoryStock>(DEFAULT_INVENTORY);
   const [inventoryLoading, setInventoryLoading] = useState(true);
 
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>(() => {
-    return [...INITIAL_AUGUST_EXPENSES].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  });
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
   const [expensesLoading, setExpensesLoading] = useState(true);
   const [expensesLimit, setExpensesLimit] = useState(1000);
   const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
 
   const [profitWithdrawals, setProfitWithdrawals] = useState<ProfitWithdrawal[]>([]);
   const [profitWithdrawalsLoading, setProfitWithdrawalsLoading] = useState(true);
-  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>(() => {
-    return [...INITIAL_AUGUST_SPECIAL_ORDERS].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  });
+  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
   const [specialOrdersLoading, setSpecialOrdersLoading] = useState(true);
 
   const [dailyDenominationsMap, setDailyDenominationsMap] = useState<Record<string, DailyDenominationsRecord>>({});
@@ -703,14 +720,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           fetchSpecialOrdersFromSupabase()
         ]);
 
+        const dMap: Record<string, DailyDenominationsRecord> = {};
+
         if (supEntries && supEntries.length > 0) {
-          setEntries(supEntries.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const filteredEntries = activeFid 
+            ? supEntries.filter(e => e.franchiseId === activeFid) 
+            : supEntries.filter(e => !e.franchiseId);
+          setEntries(filteredEntries.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setEntriesLoading(false);
+
+          filteredEntries.forEach(e => {
+            if (e.denominations) {
+              const denoms = e.denominations;
+              const total = (
+                ((Number(denoms.n500) || 0) * 500) +
+                ((Number(denoms.n200) || 0) * 200) +
+                ((Number(denoms.n100) || 0) * 100) +
+                ((Number(denoms.n50) || 0) * 50) +
+                ((Number(denoms.n20) || 0) * 20) +
+                ((Number(denoms.n10) || 0) * 10) +
+                (Number(denoms.coins) || 0)
+              );
+              dMap[e.date] = {
+                franchiseId: activeFid || 'NONE',
+                date: e.date,
+                denominations: denoms,
+                total,
+                updatedBy: 'Entry',
+                updatedAt: new Date().toISOString()
+              };
+            }
+          });
         } else {
-          // If Supabase is empty, fall back to initial August dataset
-          setEntries([...INITIAL_AUGUST_ENTRIES].sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          setEntries([]);
           setEntriesLoading(false);
         }
+
+        // Also fetch live drafts from Firestore daily_denominations for this franchise
+        try {
+          const denomsSnap = await getDocs(query(collection(db, 'daily_denominations'), where('franchiseId', '==', activeFid || 'NONE')));
+          if (denomsSnap && !denomsSnap.empty) {
+            denomsSnap.docs.forEach(docSnap => {
+              const d = docSnap.data() as DailyDenominationsRecord;
+              if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+                dMap[d.date || docSnap.id] = d;
+              }
+            });
+          }
+        } catch {}
+
+        setDailyDenominationsMap(dMap);
 
         if (supSettings) {
           setSettings(supSettings);
@@ -723,23 +782,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setInventoryLoading(false);
 
         if (supExpenses && supExpenses.length > 0) {
-          setExpenses(supExpenses.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const filteredExpenses = activeFid 
+            ? supExpenses.filter(e => e.franchiseId === activeFid) 
+            : supExpenses.filter(e => !e.franchiseId);
+          setExpenses(filteredExpenses.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setExpensesLoading(false);
         } else {
-          setExpenses([...INITIAL_AUGUST_EXPENSES].sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          setExpenses([]);
           setExpensesLoading(false);
         }
 
         if (supProfits) {
-          setProfitWithdrawals(supProfits.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const filteredProfits = activeFid 
+            ? supProfits.filter(e => e.franchiseId === activeFid) 
+            : supProfits.filter(e => !e.franchiseId);
+          setProfitWithdrawals(filteredProfits.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setProfitWithdrawalsLoading(false);
         }
 
         if (supSpecials && supSpecials.length > 0) {
-          setSpecialOrders(supSpecials.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const filteredSpecials = activeFid 
+            ? supSpecials.filter(e => e.franchiseId === activeFid) 
+            : supSpecials.filter(e => !e.franchiseId);
+          setSpecialOrders(filteredSpecials.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setSpecialOrdersLoading(false);
         } else {
-          setSpecialOrders([...INITIAL_AUGUST_SPECIAL_ORDERS].sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          setSpecialOrders([]);
           setSpecialOrdersLoading(false);
         }
 
@@ -750,9 +818,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // Firestore Fetching
       const fetchCollection = async (collName: string) => {
         try {
-          return await getDocsFromServer(collection(db, collName));
+          return await getDocsFromServer(query(collection(db, collName), where('franchiseId', '==', activeFid || 'NONE')));
         } catch {
-          return await getDocs(collection(db, collName));
+          return await getDocs(query(collection(db, collName), where('franchiseId', '==', activeFid || 'NONE')));
         }
       };
 
@@ -774,35 +842,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         denomsSnap
       ] = await Promise.all([
         fetchCollection('entries'),
-        fetchDocument('settings', 'global'),
-        fetchDocument('inventory', 'global'),
+        fetchDocument('settings', activeFid || 'global'),
+        fetchDocument('inventory', activeFid || 'global'),
         fetchCollection('expenses'),
         fetchCollection('profitWithdrawals'),
         fetchCollection('specialOrders'),
         fetchCollection('daily_denominations')
       ]);
 
+      const dMap: Record<string, DailyDenominationsRecord> = {};
       if (denomsSnap) {
-        const dMap: Record<string, DailyDenominationsRecord> = {};
         denomsSnap.docs.forEach(docSnap => {
           const d = docSnap.data() as DailyDenominationsRecord;
-          dMap[d.date || docSnap.id] = d;
+          if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+            dMap[d.date || docSnap.id] = d;
+          }
         });
-        setDailyDenominationsMap(dMap);
       }
+      setDailyDenominationsMap(dMap);
 
       if (entriesSnap) {
         const docs = entriesSnap.docs.map(d => ({ ...d.data(), id: d.id } as DailyEntry));
-        const existingDates = new Set(docs.map(d => d.date));
-        const missing = INITIAL_AUGUST_ENTRIES.filter(e => !existingDates.has(e.date));
-        const combined = [...docs, ...missing];
-        setEntries(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        setEntries(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
         setEntriesLoading(false);
       }
 
       if (settingsSnap && settingsSnap.exists()) {
         const data = settingsSnap.data() as Settings;
-        setSettings({ ...data, stickPrice: 40, potPrice: 50 });
+        setSettings(data);
       }
       setSettingsLoading(false);
 
@@ -815,9 +882,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const docs = expensesSnap.docs.map(d => ({ ...d.data(), id: d.id } as ExpenseEntry));
         const existingSignatures = new Set(docs.map(d => `${d.date}-${d.amount}-${d.category}`));
         const existingIds = new Set(docs.map(d => d.id));
-        const missing = INITIAL_AUGUST_EXPENSES.filter(e => !existingIds.has(e.id) && !existingSignatures.has(`${e.date}-${e.amount}-${e.category}`));
-        const combined = [...docs, ...missing];
-        setExpenses(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        setExpenses(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
         setExpensesLoading(false);
       }
 
@@ -830,9 +895,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (specialsSnap) {
         const docs = specialsSnap.docs.map(d => ({ ...d.data(), id: d.id } as SpecialOrder));
         const existingIds = new Set(docs.map(d => d.id));
-        const missing = INITIAL_AUGUST_SPECIAL_ORDERS.filter(e => !existingIds.has(e.id));
-        const combined = [...docs, ...missing];
-        setSpecialOrders(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        setSpecialOrders(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
         setSpecialOrdersLoading(false);
       }
 
@@ -846,6 +909,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    console.log('StoreProvider useEffect, currentFranchiseId:', currentFranchiseId);
     let unsubs: Array<() => void> = [];
 
     // 1. Supabase Realtime Listener if configured
@@ -869,23 +933,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
     } else {
       // 2. Firestore Listeners
-      const unsubAuth = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          seedAugustDataset(false).catch(err => console.warn("Auto-seed on auth:", err));
-        }
-      });
-      unsubs.push(unsubAuth);
+      
 
       try {
         const unsubEntries = onSnapshot(
-          query(collection(db, 'entries')),
+          query(collection(db, 'entries'), where('franchiseId', '==', activeFid || 'NONE')),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as DailyEntry));
-            const existingDates = new Set(docs.map(d => d.date));
-            const missing = INITIAL_AUGUST_ENTRIES.filter(e => !existingDates.has(e.date));
-            const combined = [...docs, ...missing];
-            setEntries(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
-            setHasMoreEntries(combined.length >= entriesLimit);
+            setEntries(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+            setHasMoreEntries(docs.length >= entriesLimit);
             setEntriesLoading(false);
             setLastSynced(new Date());
           },
@@ -898,11 +954,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const unsubSettings = onSnapshot(
-          doc(db, 'settings', 'global'),
+          doc(db, 'settings', activeFid || 'global'),
           (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data() as Settings;
-              setSettings({ ...data, stickPrice: 40, potPrice: 50 });
+              setSettings(data);
             } else {
               setSettings(DEFAULT_SETTINGS);
             }
@@ -917,7 +973,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const unsubInventory = onSnapshot(
-          doc(db, 'inventory', 'global'),
+          doc(db, 'inventory', activeFid || 'global'),
           (docSnap) => {
             if (docSnap.exists()) {
               setInventory(docSnap.data() as InventoryStock);
@@ -935,15 +991,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const unsubExpenses = onSnapshot(
-          query(collection(db, 'expenses')),
+          query(collection(db, 'expenses'), where('franchiseId', '==', activeFid || 'NONE')),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
             const existingSignatures = new Set(docs.map(d => `${d.date}-${d.amount}-${d.category}`));
             const existingIds = new Set(docs.map(d => d.id));
-            const missing = INITIAL_AUGUST_EXPENSES.filter(e => !existingIds.has(e.id) && !existingSignatures.has(`${e.date}-${e.amount}-${e.category}`));
-            const combined = [...docs, ...missing];
-            setExpenses(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
-            setHasMoreExpenses(combined.length >= expensesLimit);
+            setExpenses(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+            setHasMoreExpenses(docs.length >= expensesLimit);
             setExpensesLoading(false);
             setLastSynced(new Date());
           },
@@ -956,7 +1010,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const unsubProfits = onSnapshot(
-          query(collection(db, 'profitWithdrawals')),
+          query(collection(db, 'profitWithdrawals'), where('franchiseId', '==', activeFid || 'NONE')),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProfitWithdrawal));
             setProfitWithdrawals(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
@@ -971,13 +1025,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const unsubSpecialOrders = onSnapshot(
-          query(collection(db, 'specialOrders')),
+          query(collection(db, 'specialOrders'), where('franchiseId', '==', activeFid || 'NONE')),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SpecialOrder));
             const existingIds = new Set(docs.map(d => d.id));
-            const missing = INITIAL_AUGUST_SPECIAL_ORDERS.filter(e => !existingIds.has(e.id));
-            const combined = [...docs, ...missing];
-            setSpecialOrders(combined.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+            setSpecialOrders(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
             setSpecialOrdersLoading(false);
           },
           (err) => console.error("Realtime specials listener error:", err)
@@ -992,14 +1044,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // This allows real-time keystroke draft syncing across all clients via Firebase.
     try {
       const unsubDenoms = onSnapshot(
-        collection(db, 'daily_denominations'),
+        query(collection(db, 'daily_denominations'), where('franchiseId', '==', activeFid || 'NONE')),
         (snapshot) => {
           const dMap: Record<string, DailyDenominationsRecord> = {};
           snapshot.docs.forEach(docSnap => {
             const d = docSnap.data() as DailyDenominationsRecord;
-            dMap[d.date || docSnap.id] = d;
+            if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+              dMap[d.date || docSnap.id] = d;
+            }
           });
-          setDailyDenominationsMap(prev => ({ ...prev, ...dMap }));
+          setDailyDenominationsMap(dMap);
         },
         (err) => console.error("Realtime denominations listener error:", err)
       );
@@ -1019,6 +1073,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('app-data-updated', handleDataUpdated);
+    window.addEventListener('franchiseChanged', handleDataUpdated);
 
     if (syncChannel) {
       syncChannel.onmessage = () => refreshAllFromServer();
@@ -1031,8 +1086,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('app-data-updated', handleDataUpdated);
+      window.removeEventListener('franchiseChanged', handleDataUpdated);
     };
-  }, [entriesLimit, expensesLimit, refreshAllFromServer]);
+  }, [activeFid, entriesLimit, expensesLimit, refreshAllFromServer]);
 
   const loadMoreEntries = () => setEntriesLimit(prev => prev + 100);
   const loadMoreExpenses = () => setExpensesLimit(prev => prev + 100);
@@ -1074,8 +1130,8 @@ export function useDailyDenominations(targetDate?: string) {
 
   const record = targetDate ? ctx.dailyDenominationsMap[targetDate] : undefined;
 
-  const saveDenominations = useCallback(async (date: string, denoms: Denominations) => {
-    await saveDailyDenominations(date, denoms);
+  const saveDenominations = useCallback(async (date: string, denoms: Denominations, fid?: string | null) => {
+    await saveDailyDenominations(date, denoms, false, fid);
   }, []);
 
   return {
@@ -1163,7 +1219,7 @@ export function useLogs(limitCount: number = 100) {
       return;
     }
 
-    const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(limitCount));
+    const q = query(collection(db, 'logs'), where('franchiseId', '==', currentFranchiseId || 'NONE'), orderBy('timestamp', 'desc'), limit(limitCount));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
       setLogs(docs);
@@ -1247,7 +1303,7 @@ export async function clearLogs(): Promise<void> {
     if (isSupabaseConfigured()) {
       await clearLogsFromSupabase();
     } else {
-      const q = query(collection(db, 'logs'));
+      const q = query(collection(db, 'logs'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
       const snapshot = await getDocs(q);
       const deletePromises = snapshot.docs.map(document => deleteDoc(doc(db, 'logs', document.id)));
       await Promise.all(deletePromises);

@@ -1,8 +1,68 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write, delete: if true;
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserFranchiseId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.franchiseId;
+    }
+    
+    function isFranchiseMember(franchiseId) {
+      return isAuthenticated() && getUserFranchiseId() == franchiseId;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /franchises/{franchiseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || resource.id == getUserFranchiseId());
+    }
+
+    match /entries/{entryId} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+    
+    match /expenses/{expenseId} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+
+    match /profitWithdrawals/{withdrawalId} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+
+    match /specialOrders/{orderId} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+
+    match /daily_denominations/{date} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+
+    match /logs/{logId} {
+      allow read, update, delete: if isFranchiseMember(resource.data.franchiseId);
+      allow create: if isFranchiseMember(request.resource.data.franchiseId);
+    }
+
+    match /settings/{docId} {
+      allow read, update, delete: if isFranchiseMember(docId) || docId == 'global';
+      allow create: if isFranchiseMember(docId) || docId == 'global';
+    }
+
+    match /inventory/{docId} {
+      allow read, update, delete: if isFranchiseMember(docId) || docId == 'global';
+      allow create: if isFranchiseMember(docId) || docId == 'global';
     }
   }
 }

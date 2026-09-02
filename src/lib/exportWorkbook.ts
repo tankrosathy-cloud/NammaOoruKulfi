@@ -1,3 +1,4 @@
+import { calculateDailyStockLedger } from './inventoryUtils';
 import * as XLSX from 'xlsx';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, InventoryStock, Settings } from '../types';
@@ -20,123 +21,53 @@ export function buildDateWiseInventoryLedger(
   inventory: InventoryStock,
   targetMonth?: Date
 ) {
-  const baseStockDate = inventory.lastUpdatedDate || '2026-08-14';
-  const baseStickQty = Number(inventory.stickQuantity) || 0;
-  const basePotQty = Number(inventory.potQuantity) || 0;
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  // We pass daysCount = 0 since the ledger automatically pulls all entry dates.
+  const { ledgerRows } = calculateDailyStockLedger(inventory, entries, specialOrders, 0);
 
-  // Collect all unique dates from base date to today
-  const dateSet = new Set<string>();
-  if (baseStockDate) dateSet.add(baseStockDate);
-  dateSet.add(todayStr);
-  
-  entries.forEach(e => {
-    if (e.date) dateSet.add(e.date);
-  });
-  specialOrders.forEach(s => {
-    if (s.date) dateSet.add(s.date);
-  });
-
-  const chronologicalDates = Array.from(dateSet).sort((a, b) => a.localeCompare(b));
-
-  let runningStick = baseStickQty;
-  let runningPot = basePotQty;
-
-  const fullLedger: {
-    date: string;
-    day: string;
-    openingStick: number;
-    openingPot: number;
-    loadedStick: number;
-    soldStick: number;
-    cartBalStick: number;
-    eventStick: number;
-    totalStickOutflow: number;
-    closingStick: number;
-    loadedPot: number;
-    soldPot: number;
-    cartBalPot: number;
-    eventPot: number;
-    totalPotOutflow: number;
-    closingPot: number;
-    totalPiecesSold: number;
-    activityNotes: string;
-  }[] = [];
-
-  chronologicalDates.forEach(d => {
-    const dayEntry = entries.find(e => e.date === d);
-    const daySpecials = specialOrders.filter(s => s.date === d);
-
-    const loadedStick = dayEntry ? (dayEntry.stickLoaded || 0) : 0;
-    const soldStick = dayEntry ? (dayEntry.stickSold || 0) : 0;
-    const cartBalStick = dayEntry 
-      ? (dayEntry.stickBalance !== undefined ? dayEntry.stickBalance : Math.max(0, loadedStick - soldStick))
-      : 0;
-    const eventStick = daySpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
-    const totalStickOutflow = soldStick + eventStick;
-
-    const loadedPot = dayEntry ? (dayEntry.potLoaded || 0) : 0;
-    const soldPot = dayEntry ? (dayEntry.potSold || 0) : 0;
-    const cartBalPot = dayEntry 
-      ? (dayEntry.potBalance !== undefined ? dayEntry.potBalance : Math.max(0, loadedPot - soldPot))
-      : 0;
-    const eventPot = daySpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
-    const totalPotOutflow = soldPot + eventPot;
-
-    const openStick = runningStick;
-    const openPot = runningPot;
-
-    const closeStick = Math.max(0, openStick - totalStickOutflow);
-    const closePot = Math.max(0, openPot - totalPotOutflow);
-
-    // Update running stocks for next day
-    runningStick = closeStick;
-    runningPot = closePot;
-
-    let dayName = '';
-    try {
-      dayName = format(parseISO(d), 'EEEE');
-    } catch {}
+  const mapped = ledgerRows.map(row => {
+    const daySpecials = specialOrders.filter(s => s.date === row.date);
+    const dayEntry = entries.find(e => e.date === row.date);
 
     const notesParts: string[] = [];
     if (dayEntry) {
-      notesParts.push(`Cart Sold: ${soldStick}s / ${soldPot}p`);
+      notesParts.push(`Cart Sold: ${row.soldStick}s / ${row.soldPot}p`);
     }
     if (daySpecials.length > 0) {
-      notesParts.push(`Event Orders: ${eventStick}s / ${eventPot}p (${daySpecials.map(s => s.eventType).join(', ')})`);
+      notesParts.push(`Event Orders: ${row.specialOrderStick}s / ${row.specialOrderPot}p (${daySpecials.map(s => s.eventType).join(', ')})`);
     }
     if (!dayEntry && daySpecials.length === 0) {
       notesParts.push('No sales recorded');
     }
 
-    fullLedger.push({
-      date: d,
-      day: dayName,
-      openingStick: openStick,
-      openingPot: openPot,
-      loadedStick,
-      soldStick,
-      cartBalStick,
-      eventStick,
-      totalStickOutflow,
-      closingStick: closeStick,
-      loadedPot,
-      soldPot,
-      cartBalPot,
-      eventPot,
-      totalPotOutflow,
-      closingPot: closePot,
-      totalPiecesSold: totalStickOutflow + totalPotOutflow,
+    return {
+      date: row.date,
+      day: row.dayName,
+      openingStick: row.openingStick,
+      openingPot: row.openingPot,
+      loadedStick: row.loadedStick,
+      soldStick: row.soldStick,
+      cartBalStick: row.cartBalanceStick,
+      eventStick: row.specialOrderStick,
+      totalStickOutflow: row.totalStickDeducted,
+      closingStick: row.closingStick,
+      loadedPot: row.loadedPot,
+      soldPot: row.soldPot,
+      cartBalPot: row.cartBalancePot,
+      eventPot: row.specialOrderPot,
+      totalPotOutflow: row.totalPotDeducted,
+      closingPot: row.closingPot,
+      totalPiecesSold: row.totalStickDeducted + row.totalPotDeducted,
       activityNotes: notesParts.join(' | ')
-    });
+    };
   });
 
-  // If filtered by month, slice only matching dates
-  if (targetMonth) {
-    return fullLedger.filter(row => isDateInMonth(row.date, targetMonth));
-  }
+  // Sort them chronologically instead of reverse chronological
+  mapped.sort((a, b) => a.date.localeCompare(b.date));
 
-  return fullLedger;
+  if (targetMonth) {
+    return mapped.filter(row => isDateInMonth(row.date, targetMonth));
+  }
+  return mapped;
 }
 
 export function exportMultiTabWorkbook(options: ExportDataOptions) {

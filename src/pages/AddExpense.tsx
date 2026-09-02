@@ -1,3 +1,4 @@
+import { useSettings } from '../store';
 import React, { useState } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -9,10 +10,14 @@ import { auth } from '../lib/firebase';
 
 export default function AddExpense({ onSave, onCancel, initialExpense }: { onSave: () => void, onCancel?: () => void, initialExpense?: ExpenseEntry }) {
   const [loading, setLoading] = useState(false);
+  const { settings } = useSettings();
 
   const currentUserEmail = auth.currentUser?.email || '';
   const currentUsername = currentUserEmail.split('@')[0].toLowerCase();
-  const defaultPayer = initialExpense?.paidBy || (currentUsername === 'admin' ? 'Admin' : currentUsername === 'yuvaraj' ? 'Yuvaraj' : 'Nadeem');
+  const allowedUsers = settings?.expensePaidByNames && settings.expensePaidByNames.length > 0 ? settings.expensePaidByNames : ['Owner', 'Manager', 'Staff'];
+  const categories = settings?.expenseCategories && settings.expenseCategories.length > 0 ? settings.expenseCategories : ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Chit', 'Inventory', 'Others'];
+
+  const defaultPayer = initialExpense?.paidBy || (allowedUsers.length > 0 ? allowedUsers[0] : 'Owner');
 
   const [formData, setFormData] = useState({
     date: initialExpense?.date || new Date().toLocaleDateString('en-CA'),
@@ -21,9 +26,6 @@ export default function AddExpense({ onSave, onCancel, initialExpense }: { onSav
     amount: initialExpense ? initialExpense.amount.toString() : '',
     notes: initialExpense?.notes || ''
   });
-
-  const allowedUsers = ['Nadeem', 'Admin', 'Yuvaraj'];
-  const categories = ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Chit', 'Inventory', 'Others'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

@@ -1,3 +1,4 @@
+import { currentFranchiseId } from '../store';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
 import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder } from '../types';
 import { INITIAL_AUGUST_ENTRIES, INITIAL_AUGUST_EXPENSES, INITIAL_AUGUST_SPECIAL_ORDERS } from './augustDataset';
@@ -9,6 +10,7 @@ import { INITIAL_AUGUST_ENTRIES, INITIAL_AUGUST_EXPENSES, INITIAL_AUGUST_SPECIAL
 function entryToRow(e: DailyEntry, userId: string = '') {
   return {
     id: e.id,
+    franchise_id: e.franchiseId || currentFranchiseId || null,
     date: e.date,
     stick_loaded: Number(e.stickLoaded) || 0,
     stick_balance: e.stickBalance !== undefined ? Number(e.stickBalance) : null,
@@ -31,7 +33,10 @@ function entryToRow(e: DailyEntry, userId: string = '') {
     notes: e.notes || '',
     denominations: e.denominations || null,
     user_id: userId || e.userId || '',
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
+    plate_loaded: e.plateLoaded !== undefined ? Number(e.plateLoaded) : 0,
+    plate_balance: e.plateBalance !== undefined ? Number(e.plateBalance) : null,
+    plate_sold: e.plateSold !== undefined ? Number(e.plateSold) : 0
   };
 }
 
@@ -49,6 +54,7 @@ function rowToEntry(r: any): DailyEntry {
 
   return {
     id: r.id,
+    franchiseId: r.franchise_id || null,
     date: r.date,
     stickLoaded: Number(r.stick_loaded) || 0,
     stickBalance: r.stick_balance !== null && r.stick_balance !== undefined ? Number(r.stick_balance) : undefined,
@@ -71,13 +77,17 @@ function rowToEntry(r: any): DailyEntry {
     notes: r.notes || '',
     denominations: parsedDenominations,
     userId: r.user_id || '',
-    updatedAt: r.updated_at
+    updatedAt: r.updated_at,
+    plateLoaded: r.plate_loaded !== null && r.plate_loaded !== undefined ? Number(r.plate_loaded) : 0,
+    plateBalance: r.plate_balance !== null && r.plate_balance !== undefined ? Number(r.plate_balance) : undefined,
+    plateSold: r.plate_sold !== null && r.plate_sold !== undefined ? Number(r.plate_sold) : 0
   };
 }
 
 function expenseToRow(e: ExpenseEntry, userId: string = '') {
   return {
     id: e.id,
+    franchise_id: e.franchiseId || currentFranchiseId || null,
     date: e.date,
     category: e.category,
     amount: Number(e.amount) || 0,
@@ -92,6 +102,7 @@ function expenseToRow(e: ExpenseEntry, userId: string = '') {
 function rowToExpense(r: any): ExpenseEntry {
   return {
     id: r.id,
+    franchiseId: r.franchise_id || null,
     date: r.date,
     category: r.category,
     amount: Number(r.amount) || 0,
@@ -106,10 +117,12 @@ function rowToExpense(r: any): ExpenseEntry {
 function specialOrderToRow(s: SpecialOrder, userId: string = '') {
   return {
     id: s.id,
+    franchise_id: s.franchiseId || currentFranchiseId || null,
     date: s.date,
     event_type: s.eventType,
     stick_quantity: Number(s.stickQuantity) || 0,
     pot_quantity: Number(s.potQuantity) || 0,
+    plate_quantity: Number(s.plateQuantity) || 0,
     amount_received: Number(s.amountReceived) || 0,
     notes: s.notes || '',
     user_id: userId || s.userId || '',
@@ -120,10 +133,12 @@ function specialOrderToRow(s: SpecialOrder, userId: string = '') {
 function rowToSpecialOrder(r: any): SpecialOrder {
   return {
     id: r.id,
+    franchiseId: r.franchise_id || null,
     date: r.date,
     eventType: r.event_type,
     stickQuantity: Number(r.stick_quantity) || 0,
     potQuantity: Number(r.pot_quantity) || 0,
+    plateQuantity: Number(r.plate_quantity) || 0,
     amountReceived: Number(r.amount_received) || 0,
     notes: r.notes || '',
     userId: r.user_id || '',
@@ -133,11 +148,14 @@ function rowToSpecialOrder(r: any): SpecialOrder {
 
 function inventoryToRow(inv: InventoryStock, userId: string = '') {
   return {
-    id: 'global',
+    id: currentFranchiseId || 'global',
+    franchise_id: currentFranchiseId || null,
     stick_quantity: Number(inv.stickQuantity) || 0,
     pot_quantity: Number(inv.potQuantity) || 0,
+    plate_quantity: Number(inv.plateQuantity) || 0,
     stick_flavours: inv.stickFlavours || [],
     pot_flavours: inv.potFlavours || [],
+    plate_flavours: inv.plateFlavours || [],
     last_updated_date: inv.lastUpdatedDate || new Date().toISOString().split('T')[0],
     user_id: userId || inv.userId || '',
     updated_at: new Date().toISOString()
@@ -146,11 +164,14 @@ function inventoryToRow(inv: InventoryStock, userId: string = '') {
 
 function rowToInventory(r: any): InventoryStock {
   return {
-    id: 'global',
+    id: r.id || 'global',
+    franchiseId: r.franchise_id || null,
     stickQuantity: Number(r.stick_quantity) || 0,
     potQuantity: Number(r.pot_quantity) || 0,
+    plateQuantity: Number(r.plate_quantity) || 0,
     stickFlavours: Array.isArray(r.stick_flavours) ? r.stick_flavours : [],
     potFlavours: Array.isArray(r.pot_flavours) ? r.pot_flavours : [],
+    plateFlavours: Array.isArray(r.plate_flavours) ? r.plate_flavours : [],
     lastUpdatedDate: r.last_updated_date || new Date().toISOString().split('T')[0],
     userId: r.user_id || ''
   };
@@ -158,27 +179,44 @@ function rowToInventory(r: any): InventoryStock {
 
 function settingsToRow(s: Settings) {
   return {
-    id: 'global',
+    id: currentFranchiseId || 'global',
+    franchise_id: currentFranchiseId || null,
     stick_price: Number(s.stickPrice) || 40,
     pot_price: Number(s.potPrice) || 50,
     plate_price: Number(s.platePrice) || 75,
     monthly_goal: Number(s.monthlyGoal) || 150000,
+    expense_paid_by_names: s.expensePaidByNames || null,
+    expense_categories: s.expenseCategories || null,
+    enable_stick: s.enableStick ?? true,
+    enable_pot: s.enablePot ?? true,
+    enable_plate: s.enablePlate ?? true,
+    enable_platform_fee: s.enablePlatformFee ?? false,
+    platform_fee: Number(s.platformFee) || 0,
     updated_at: new Date().toISOString()
   };
 }
 
 function rowToSettings(r: any): Settings {
   return {
+    franchiseId: r.franchise_id || null,
     stickPrice: Number(r.stick_price) || 40,
     potPrice: Number(r.pot_price) || 50,
     platePrice: Number(r.plate_price) || 75,
-    monthlyGoal: Number(r.monthly_goal) || 150000
+    monthlyGoal: Number(r.monthly_goal) || 150000,
+    expensePaidByNames: Array.isArray(r.expense_paid_by_names) ? r.expense_paid_by_names : undefined,
+    expenseCategories: Array.isArray(r.expense_categories) ? r.expense_categories : undefined,
+    enableStick: r.enable_stick ?? true,
+    enablePot: r.enable_pot ?? true,
+    enablePlate: r.enable_plate ?? true,
+    enablePlatformFee: r.enable_platform_fee ?? false,
+    platformFee: Number(r.platform_fee) || 0
   };
 }
 
 function withdrawalToRow(w: ProfitWithdrawal, userId: string = '') {
   return {
     id: w.id,
+    franchise_id: w.franchiseId || currentFranchiseId || null,
     date: w.date,
     amount: Number(w.amount) || 0,
     withdrawn_by: w.withdrawnBy || '',
@@ -191,6 +229,7 @@ function withdrawalToRow(w: ProfitWithdrawal, userId: string = '') {
 function rowToWithdrawal(r: any): ProfitWithdrawal {
   return {
     id: r.id,
+    franchiseId: r.franchise_id || null,
     date: r.date,
     amount: Number(r.amount) || 0,
     withdrawnBy: r.withdrawn_by || '',
@@ -203,6 +242,7 @@ function rowToWithdrawal(r: any): ProfitWithdrawal {
 function logToRow(l: AppLog) {
   return {
     id: l.id,
+    franchise_id: currentFranchiseId || null,
     timestamp: l.timestamp || new Date().toISOString(),
     user_email: l.userEmail || '',
     action: l.action,
@@ -214,6 +254,7 @@ function logToRow(l: AppLog) {
 function rowToLog(r: any): AppLog {
   return {
     id: r.id,
+    franchiseId: r.franchise_id || null,
     timestamp: r.timestamp,
     userEmail: r.user_email,
     action: r.action,
@@ -248,13 +289,87 @@ export async function upsertEntryToSupabase(entry: DailyEntry, userId: string = 
   if (!client) return false;
 
   const row = entryToRow(entry, userId);
+  
+  const isDuplicateKeyError = (err: any) => {
+    if (!err) return false;
+    const str = typeof err === 'object' ? JSON.stringify(err) : String(err);
+    return (
+      err.code === '23505' ||
+      str.includes('23505') ||
+      str.includes('entries_date_key') ||
+      str.includes('already exists') ||
+      str.includes('duplicate key')
+    );
+  };
+
+  const handleUniqueDateViolation = async (currentRow: any, origError: any) => {
+    try {
+      // Find the existing row for this date (regardless of franchise_id filter)
+      const { data: existingData } = await client
+        .from('entries')
+        .select('id')
+        .eq('date', currentRow.date)
+        .maybeSingle();
+
+      if (existingData && existingData.id) {
+        const retryRow = { ...currentRow, id: existingData.id };
+        const { error: updateError } = await client
+          .from('entries')
+          .update(retryRow)
+          .eq('id', existingData.id);
+
+        if (!updateError) return true;
+
+        if (
+          updateError.code === 'PGRST204' ||
+          (updateError.message &&
+            (updateError.message.includes('denominations') ||
+              updateError.message.includes('plate') ||
+              updateError.message.includes('column')))
+        ) {
+          const {
+            denominations,
+            plate_loaded,
+            plate_balance,
+            plate_sold,
+            enable_stick,
+            enable_pot,
+            enable_plate,
+            enable_platform_fee,
+            ...fallbackRow
+          } = retryRow as any;
+
+          const { error: fallbackUpdateErr } = await client
+            .from('entries')
+            .update(fallbackRow)
+            .eq('id', existingData.id);
+
+          if (!fallbackUpdateErr) return true;
+          throw fallbackUpdateErr;
+        }
+        throw updateError;
+      }
+    } catch (innerErr) {
+      console.error('Failed to resolve unique date violation on entries:', innerErr);
+    }
+    throw origError;
+  };
+
   const { error } = await client.from('entries').upsert(row, { onConflict: 'id' });
+  
   if (error) {
-    // If Postgres table doesn't have denominations column yet, fallback without it
-    if (error.message && error.message.includes('denominations')) {
-      const { denominations, ...fallbackRow } = row;
+    if (isDuplicateKeyError(error)) {
+      return await handleUniqueDateViolation(row, error);
+    }
+
+    if (error.code === 'PGRST204' || (error.message && (error.message.includes('denominations') || error.message.includes('plate') || error.message.includes('column')))) {
+      const { denominations, plate_loaded, plate_balance, plate_sold, enable_stick, enable_pot, enable_plate, enable_platform_fee, ...fallbackRow } = row as any;
       const { error: retryError } = await client.from('entries').upsert(fallbackRow, { onConflict: 'id' });
+      
       if (retryError) {
+        if (isDuplicateKeyError(retryError)) {
+          return await handleUniqueDateViolation(fallbackRow, retryError);
+        }
         console.error('Supabase upsert entry retry error:', retryError);
         throw retryError;
       }
@@ -344,6 +459,16 @@ export async function upsertSpecialOrderToSupabase(order: SpecialOrder, userId: 
   const row = specialOrderToRow(order, userId);
   const { error } = await client.from('special_orders').upsert(row, { onConflict: 'id' });
   if (error) {
+    if (error.code === 'PGRST204' || (error.message && (error.message.includes('plate') || error.message.includes('column')))) {
+      const { plate_quantity, ...fallbackRow } = row as any;
+      const { error: retryError } = await client.from('special_orders').upsert(fallbackRow, { onConflict: 'id' });
+      
+      if (retryError) {
+        console.error('Supabase upsert special order retry error:', retryError);
+        throw retryError;
+      }
+      return true;
+    }
     console.error('Supabase upsert special order error:', error);
     throw error;
   }
@@ -369,7 +494,8 @@ export async function fetchInventoryFromSupabase(): Promise<InventoryStock | nul
   const { data, error } = await client
     .from('inventory')
     .select('*')
-    .eq('id', 'global')
+    
+    .eq('id', currentFranchiseId || 'global')
     .single();
 
   if (error || !data) {
@@ -386,6 +512,16 @@ export async function upsertInventoryToSupabase(inv: InventoryStock, userId: str
   const row = inventoryToRow(inv, userId);
   const { error } = await client.from('inventory').upsert(row, { onConflict: 'id' });
   if (error) {
+    if (error.code === 'PGRST204' || (error.message && (error.message.includes('plate') || error.message.includes('column')))) {
+      const { plate_quantity, plate_flavours, ...fallbackRow } = row as any;
+      const { error: retryError } = await client.from('inventory').upsert(fallbackRow, { onConflict: 'id' });
+      
+      if (retryError) {
+        console.error('Supabase upsert inventory retry error:', retryError);
+        throw retryError;
+      }
+      return true;
+    }
     console.error('Supabase upsert inventory error:', error);
     throw error;
   }
@@ -399,7 +535,8 @@ export async function fetchSettingsFromSupabase(): Promise<Settings | null> {
   const { data, error } = await client
     .from('settings')
     .select('*')
-    .eq('id', 'global')
+    
+    .eq('id', currentFranchiseId || 'global')
     .single();
 
   if (error || !data) {

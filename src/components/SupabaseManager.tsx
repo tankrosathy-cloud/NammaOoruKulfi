@@ -42,7 +42,8 @@ const SQL_SCHEMA_SNIPPET = `-- =================================================
 -- 1. Daily Sales Entries Table
 CREATE TABLE IF NOT EXISTS public.entries (
     id TEXT PRIMARY KEY,
-    date DATE UNIQUE NOT NULL,
+    franchise_id TEXT,
+    date DATE NOT NULL,
     stick_loaded INT DEFAULT 0,
     stick_balance INT DEFAULT 0,
     stick_sold INT DEFAULT 0,
@@ -192,7 +193,7 @@ VALUES ('global', 40, 50, 75, 150000)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.inventory (id, stick_quantity, pot_quantity, last_updated_date, stick_flavours, pot_flavours)
-VALUES ('global', 771, 28, '2026-08-23', '[{"name": "Pista badam", "quantity": 22}]'::jsonb, '[{"name": "Badam", "quantity": 0}, {"name": "Pistha", "quantity": 12}, {"name": "Pistha badam", "quantity": 12}, {"name": "Shahi gulab", "quantity": 24}]'::jsonb)
+VALUES ('global', 0, 0, '2026-08-23', '[{"name": "Pista badam", "quantity": 0}]'::jsonb, '[{"name": "Badam", "quantity": 0}, {"name": "Pistha", "quantity": 0}, {"name": "Pistha badam", "quantity": 0}, {"name": "Shahi gulab", "quantity": 0}]'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 `;
 

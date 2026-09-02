@@ -8,21 +8,28 @@ import SettingsPage from './pages/Settings';
 import AddExpense from './pages/AddExpense';
 import HistoryLogs from './pages/HistoryLogs';
 import { auth } from './lib/firebase';
-import { StoreProvider, isUserAdminOrOwner } from './store';
+import { StoreProvider, isUserAdminOrOwner, setCurrentUserRole, setCurrentFranchiseId } from './store';
 import { signOut } from 'firebase/auth';
 import { useTheme } from './context/ThemeContext';
+import { useFranchise } from './context/FranchiseContext';
 import { motion } from 'motion/react';
 import SyncStatus from './components/SyncStatus';
+import SuperAdmin from './pages/SuperAdmin';
 
 function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
 
+  const { profile, franchise } = useFranchise();
   const userEmail = auth.currentUser?.email || '';
   const username = userEmail.split('@')[0].toLowerCase();
-  const role = isUserAdminOrOwner(username) ? 'owner' : 'manager';
+  const role = profile?.role === 'superadmin' ? 'superadmin' : ((profile?.role === 'owner' || profile?.role === 'manager') ? 'owner' : 'staff');
+  useEffect(() => {
+    setCurrentUserRole(role === 'owner' ? 'owner' : 'staff');
+    
+  }, [role]);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs'>(role === 'owner' ? 'dashboard' : 'add');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'add'));
 
   useEffect(() => {
     const mainContainer = document.querySelector('main');
@@ -41,7 +48,7 @@ function AppShellContent() {
     setActiveTab('expense');
   };
 
-  const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs') => {
+  const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin') => {
     if (tab !== 'add') {
       setEditDate(undefined);
     }
@@ -70,7 +77,7 @@ function AppShellContent() {
           <div className="flex flex-col">
             <span className={`text-[8px] sm:text-[10px] font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase mb-0.5 sm:mb-1 ${
               isDark ? 'text-cyan-400' : 'text-cyan-600'
-            }`}>Sathyamangalam</span>
+            }`}>{franchise?.name || 'Franchise'}</span>
             <h1 className={`text-lg sm:text-2xl font-black tracking-tighter leading-none uppercase ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}>Namma Ooru <span className="text-pink-500">Kulfi</span></h1>
@@ -89,7 +96,16 @@ function AppShellContent() {
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          {role === 'owner' && (
+          {role === 'superadmin' && (
+          <NavItem 
+            icon={<SettingsIcon className="w-5 h-5" />} 
+            label="Admin" 
+            active={activeTab === 'superadmin'} 
+            onClick={() => navigateTab('superadmin')} 
+            isDark={isDark}
+          />
+        )}
+        {role === 'owner' && (
             <button 
               onClick={() => navigateTab('logs')} 
               className={`transition-colors p-1.5 rounded-lg ${
@@ -121,9 +137,10 @@ function AppShellContent() {
         {activeTab === 'dashboard' && role === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
         {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
-        {activeTab === 'reports' && <Reports role={role} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
-        {activeTab === 'settings' && <SettingsPage role={role} />}
+        {activeTab === 'reports' && <Reports role={role as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
+        {activeTab === 'settings' && <SettingsPage role={role as any} />}
         {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
+        {activeTab === 'superadmin' && role === 'superadmin' && <SuperAdmin />}
       </main>
 
       <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-20 transition-all duration-300 border-t ${
@@ -140,13 +157,13 @@ function AppShellContent() {
             isDark={isDark}
           />
         )}
-        <NavItem 
+        {role !== 'superadmin' && <NavItem 
           icon={<PlusCircle className="w-5 h-5" />} 
           label="Job" 
           active={activeTab === 'add'} 
           onClick={() => navigateTab('add')} 
           isDark={isDark}
-        />
+        />}
         {role === 'owner' && (
           <NavItem 
             icon={<Wallet className="w-5 h-5" />} 
@@ -156,20 +173,20 @@ function AppShellContent() {
             isDark={isDark}
           />
         )}
-        <NavItem 
+        {role !== 'superadmin' && <NavItem 
           icon={<List className="w-5 h-5" />} 
           label="REC" 
           active={activeTab === 'reports'} 
           onClick={() => navigateTab('reports')} 
           isDark={isDark}
-        />
-        <NavItem 
+        />}
+        {role !== 'superadmin' && <NavItem 
           icon={role === 'owner' ? <SettingsIcon className="w-5 h-5" /> : <Package className="w-5 h-5" />} 
           label={role === 'owner' ? "Admin" : "Inv"} 
           active={activeTab === 'settings'} 
           onClick={() => navigateTab('settings')} 
           isDark={isDark}
-        />
+        />}
       </nav>
     </div>
   );
@@ -198,8 +215,11 @@ function NavItem({ icon, label, active, onClick, isDark }: { icon: React.ReactNo
 
 
 export default function AppShell() {
+  const { profile } = useFranchise();
+  setCurrentFranchiseId(profile?.franchiseId || null);
+
   return (
-    <StoreProvider>
+    <StoreProvider franchiseId={profile?.franchiseId}>
       <AppShellContent />
     </StoreProvider>
   );

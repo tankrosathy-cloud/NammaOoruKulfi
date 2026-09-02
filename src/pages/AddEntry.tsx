@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
-import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations } from '../store';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, getDenomsStorageKey } from '../store';
+import { useFranchise } from '../context/FranchiseContext';
 import { format, subDays, parseISO } from 'date-fns';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -9,7 +10,7 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Sparkles, MessageCircle, Share2, CheckCircle2 } from 'lucide-react';
 import CashReconciliationCard from '../components/CashReconciliationCard';
-import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import { WhatsAppSummaryModal } from '../components/WhatsAppSummaryModal';
 import { calculateAvailableStock } from '../lib/inventoryUtils';
 
 const DEFAULT_DENOMS: Denominations = {
@@ -31,6 +32,8 @@ const numToInputStr = (val: number | string | undefined | null): string => {
 };
 
 export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: () => void, onCancel?: () => void, initialDate?: string, key?: string }) {
+  const { profile } = useFranchise();
+  const activeFid = profile?.franchiseId;
   const { settings } = useSettings();
   const { entries } = useEntries();
   const { inventory } = useInventory();
@@ -55,6 +58,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const [formData, setFormData] = useState({
     stickLoaded: '', stickBalance: '',
     potLoaded: '', potBalance: '',
+        plateLoaded: '', plateBalance: '',
     cashBagLoaded: '', cashBagTotal: '', phonePe: '',
     discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
     notes: ''
@@ -67,120 +71,110 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     isDirtyRef.current = false;
     lastLoadedDateRef.current = null;
     setAutoSaveStatus('idle');
-  }, [date]);
+  }, [date, activeFid]);
 
   useEffect(() => {
     if (!entries) return;
-    if (lastLoadedDateRef.current === date) return;
-    lastLoadedDateRef.current = date;
     
     const existingEntry = entries.find(e => e.date === date);
-    let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
-
-    // 1. Check global real-time cloud denominations map first (synced across all devices/users)
-    const cloudRecord = dailyDenominationsMap[date];
-    const cloudDenoms = cloudRecord?.denominations;
 
     if (existingEntry) {
       setIsEditing(true);
       setEntryId(existingEntry.id);
-      setFormData({
-        stickLoaded: numToInputStr(existingEntry.stickLoaded),
-        stickBalance: numToInputStr(existingEntry.stickBalance),
-        potLoaded: numToInputStr(existingEntry.potLoaded),
-        potBalance: numToInputStr(existingEntry.potBalance),
-        cashBagLoaded: numToInputStr(existingEntry.cashBagLoaded),
-        cashBagTotal: numToInputStr(existingEntry.cashBagTotal),
-        phonePe: numToInputStr(existingEntry.phonePe),
-        discount: numToInputStr(existingEntry.discount),
-        additionalExpenses: numToInputStr(existingEntry.additionalExpenses),
-        expenseDetails: existingEntry.expenseDetails ?? '',
-        bonus: numToInputStr(existingEntry.bonus),
-        notes: existingEntry.notes ?? ''
-      });
 
-      if (cloudDenoms) {
-        loadedDenoms = {
-          n500: Number(cloudDenoms.n500) || 0,
-          n200: Number(cloudDenoms.n200) || 0,
-          n100: Number(cloudDenoms.n100) || 0,
-          n50: Number(cloudDenoms.n50) || 0,
-          n20: Number(cloudDenoms.n20) || 0,
-          n10: Number(cloudDenoms.n10) || 0,
-          coins: Number(cloudDenoms.coins) || 0
-        };
-      } else if (existingEntry.denominations) {
-        loadedDenoms = {
-          n500: Number(existingEntry.denominations.n500) || 0,
-          n200: Number(existingEntry.denominations.n200) || 0,
-          n100: Number(existingEntry.denominations.n100) || 0,
-          n50: Number(existingEntry.denominations.n50) || 0,
-          n20: Number(existingEntry.denominations.n20) || 0,
-          n10: Number(existingEntry.denominations.n10) || 0,
-          coins: Number(existingEntry.denominations.coins) || 0
-        };
-      } else {
-        // Fallback to local draft cache for this date
-        try {
-          const cached = localStorage.getItem(`kulfi_denoms_${date}`);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            loadedDenoms = {
-              n500: Number(parsed.n500) || 0,
-              n200: Number(parsed.n200) || 0,
-              n100: Number(parsed.n100) || 0,
-              n50: Number(parsed.n50) || 0,
-              n20: Number(parsed.n20) || 0,
-              n10: Number(parsed.n10) || 0,
-              coins: Number(parsed.coins) || 0
-            };
-          }
-        } catch {}
+      if (lastLoadedDateRef.current !== date && !isDirtyRef.current) {
+        lastLoadedDateRef.current = date;
+        setFormData({
+          stickLoaded: numToInputStr(existingEntry.stickLoaded),
+          stickBalance: numToInputStr(existingEntry.stickBalance),
+          potLoaded: numToInputStr(existingEntry.potLoaded),
+          potBalance: numToInputStr(existingEntry.potBalance),
+          plateLoaded: numToInputStr(existingEntry.plateLoaded),
+          plateBalance: numToInputStr(existingEntry.plateBalance),
+          cashBagLoaded: numToInputStr(existingEntry.cashBagLoaded),
+          cashBagTotal: numToInputStr(existingEntry.cashBagTotal),
+          phonePe: numToInputStr(existingEntry.phonePe),
+          discount: numToInputStr(existingEntry.discount),
+          additionalExpenses: numToInputStr(existingEntry.additionalExpenses),
+          expenseDetails: existingEntry.expenseDetails ?? '',
+          bonus: numToInputStr(existingEntry.bonus),
+          notes: existingEntry.notes ?? ''
+        });
+
+        // 1. Check global real-time cloud denominations map first (synced across all devices/users for this franchise)
+        const cloudRecord = dailyDenominationsMap[date];
+        const isMatchingFranchise = !cloudRecord?.franchiseId || cloudRecord.franchiseId === activeFid;
+        const cloudDenoms = isMatchingFranchise ? cloudRecord?.denominations : undefined;
+        let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
+
+        if (cloudDenoms) {
+          loadedDenoms = {
+            n500: Number(cloudDenoms.n500) || 0,
+            n200: Number(cloudDenoms.n200) || 0,
+            n100: Number(cloudDenoms.n100) || 0,
+            n50: Number(cloudDenoms.n50) || 0,
+            n20: Number(cloudDenoms.n20) || 0,
+            n10: Number(cloudDenoms.n10) || 0,
+            coins: Number(cloudDenoms.coins) || 0
+          };
+        } else if (existingEntry.denominations) {
+          loadedDenoms = {
+            n500: Number(existingEntry.denominations.n500) || 0,
+            n200: Number(existingEntry.denominations.n200) || 0,
+            n100: Number(existingEntry.denominations.n100) || 0,
+            n50: Number(existingEntry.denominations.n50) || 0,
+            n20: Number(existingEntry.denominations.n20) || 0,
+            n10: Number(existingEntry.denominations.n10) || 0,
+            coins: Number(existingEntry.denominations.coins) || 0
+          };
+        } else {
+          // Fallback to local draft cache for this date & franchise
+          try {
+            const cached = localStorage.getItem(getDenomsStorageKey(date, activeFid));
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              loadedDenoms = {
+                n500: Number(parsed.n500) || 0,
+                n200: Number(parsed.n200) || 0,
+                n100: Number(parsed.n100) || 0,
+                n50: Number(parsed.n50) || 0,
+                n20: Number(parsed.n20) || 0,
+                n10: Number(parsed.n10) || 0,
+                coins: Number(parsed.coins) || 0
+              };
+            }
+          } catch {}
+        }
+
+        if (!isDenomsDirtyRef.current) {
+          setDenominations(loadedDenoms);
+        }
       }
     } else {
-      setIsEditing(false);
-      setEntryId(uuidv4());
-      setFormData({
-        stickLoaded: '', stickBalance: '',
-        potLoaded: '', potBalance: '',
-        cashBagLoaded: '', cashBagTotal: '', phonePe: '',
-        discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
-        notes: ''
-      });
+      if (lastLoadedDateRef.current !== date) {
+        lastLoadedDateRef.current = date;
+        setIsEditing(false);
+        setEntryId(uuidv4());
 
-      if (cloudDenoms) {
-        loadedDenoms = {
-          n500: Number(cloudDenoms.n500) || 0,
-          n200: Number(cloudDenoms.n200) || 0,
-          n100: Number(cloudDenoms.n100) || 0,
-          n50: Number(cloudDenoms.n50) || 0,
-          n20: Number(cloudDenoms.n20) || 0,
-          n10: Number(cloudDenoms.n10) || 0,
-          coins: Number(cloudDenoms.coins) || 0
-        };
-      } else {
-        // Check draft denominations cache for this new date
-        try {
-          const cached = localStorage.getItem(`kulfi_denoms_${date}`);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            loadedDenoms = {
-              n500: Number(parsed.n500) || 0,
-              n200: Number(parsed.n200) || 0,
-              n100: Number(parsed.n100) || 0,
-              n50: Number(parsed.n50) || 0,
-              n20: Number(parsed.n20) || 0,
-              n10: Number(parsed.n10) || 0,
-              coins: Number(parsed.coins) || 0
-            };
+        if (!isDirtyRef.current) {
+          setFormData({
+            stickLoaded: '', stickBalance: '',
+            potLoaded: '', potBalance: '',
+            plateLoaded: '', plateBalance: '',
+            cashBagLoaded: '', cashBagTotal: '', phonePe: '',
+            discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
+            notes: ''
+          });
+
+          let loadedDenoms: Denominations = { ...DEFAULT_DENOMS };
+
+          if (!isDenomsDirtyRef.current) {
+            setDenominations(loadedDenoms);
           }
-        } catch {}
+        }
       }
     }
 
-    if (!isDenomsDirtyRef.current) {
-      setDenominations(loadedDenoms);
-    }
     setAppliedFromDenomsFeedback(null);
 
     const prevEntry = [...entries]
@@ -195,14 +189,14 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     } else {
       setPrevBalances({ stick: 0, pot: 0 });
     }
-  }, [date, entries, dailyDenominationsMap]);
+  }, [date, entries, dailyDenominationsMap, activeFid]);
 
   const handleDenominationsChange = (newDenoms: Denominations) => {
     isDenomsDirtyRef.current = true;
     isDirtyRef.current = true;
     setDenominations(newDenoms);
     try {
-      localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(newDenoms));
+      localStorage.setItem(getDenomsStorageKey(date, activeFid), JSON.stringify(newDenoms));
     } catch (e) {
       console.warn('Failed to save draft denominations to localStorage', e);
     }
@@ -215,7 +209,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     setTimeout(() => setAppliedFromDenomsFeedback(null), 6000);
   };
 
-  const { availableStick, availablePot } = useMemo(() => {
+  const { availableStick, availablePot, availablePlate } = useMemo(() => {
     return calculateAvailableStock(inventory, entries, specialOrders);
   }, [inventory, entries, specialOrders]);
 
@@ -260,19 +254,22 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const potLoadedVal = parseInt(formData.potLoaded) || 0;
   const potBalanceVal = formData.potBalance === '' ? potLoadedVal : (parseInt(formData.potBalance) || 0);
   const potSold = Math.max(0, potLoadedVal - potBalanceVal);
+  const plateLoadedVal = parseInt(formData.plateLoaded) || 0;
+  const plateBalanceVal = formData.plateBalance === '' ? plateLoadedVal : (parseInt(formData.plateBalance) || 0);
+  const plateSold = Math.max(0, plateLoadedVal - plateBalanceVal);
 
   // Auto calculate finances
   const discount = parseInt(formData.discount) || 0;
   const cashBagLoaded = parseInt(formData.cashBagLoaded) || 0;
   
-  const hasSalesOrCash = stickSold > 0 || potSold > 0 || parseInt(formData.cashBagTotal) > 0 || parseInt(formData.phonePe) > 0;
-  const platformRent = hasSalesOrCash ? 15 : 0; // Hardcoded platform rent, only applied if there's activity
+  const hasSalesOrCash = stickSold > 0 || potSold > 0 || plateSold > 0 || parseInt(formData.cashBagTotal) > 0 || parseInt(formData.phonePe) > 0;
+  const platformRent = (hasSalesOrCash && settings.enablePlatformFee) ? (settings.platformFee || 0) : 0;
   
   const additionalExpenses = parseInt(formData.additionalExpenses) || 0;
   const bonus = parseInt(formData.bonus) || 0;
   
   // Required amount: Sales - Discount + Cash Bag Loaded - Platform Rent - Additional Expenses - Bonus
-  const expectedSales = (stickSold * settings.stickPrice) + (potSold * settings.potPrice);
+  const expectedSales = (stickSold * (settings.stickPrice || 40)) + (potSold * (settings.potPrice || 50)) + (plateSold * (settings.platePrice || 75));
   const requiredAmount = expectedSales - discount + cashBagLoaded - platformRent - additionalExpenses - bonus;
 
   const actualAmount = (parseInt(formData.cashBagTotal) || 0) + (parseInt(formData.phonePe) || 0);
@@ -302,8 +299,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
 
     setAutoSaveStatus('saving');
     const timer = setTimeout(async () => {
-      const safeId = entryId && entryId.trim() !== '' ? entryId : uuidv4();
-      if (!entryId) setEntryId(safeId);
+      const matchingEntry = entries?.find(e => e.date === date);
+      const safeId = (matchingEntry && matchingEntry.id) ? matchingEntry.id : (entryId && entryId.trim() !== '' ? entryId : uuidv4());
+      if (entryId !== safeId) setEntryId(safeId);
 
       const entry: DailyEntry = {
         id: safeId,
@@ -314,6 +312,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         potLoaded: parseInt(formData.potLoaded) || 0,
         ...(formData.potBalance !== '' ? { potBalance: parseInt(formData.potBalance) } : {}),
         potSold,
+        plateLoaded: parseInt(formData.plateLoaded) || 0,
+        ...(formData.plateBalance !== '' ? { plateBalance: parseInt(formData.plateBalance) } : {}),
+        plateSold,
         cashBagLoaded: parseInt(formData.cashBagLoaded) || 0,
         cashBagTotal: parseInt(formData.cashBagTotal) || 0,
         phonePe: parseInt(formData.phonePe) || 0,
@@ -327,16 +328,18 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
         additionalExpenses: parseInt(formData.additionalExpenses) || 0,
         expenseDetails: formData.expenseDetails,
         notes: formData.notes,
-        denominations
+        denominations,
+        franchiseId: activeFid
       };
 
       try {
         await saveEntry(entry);
         try {
-          localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+          localStorage.setItem(getDenomsStorageKey(date, activeFid), JSON.stringify(denominations));
         } catch {}
         setAutoSaveStatus('saved');
         setIsEditing(true);
+        isDirtyRef.current = false;
       } catch (err) {
         console.error('Auto-save failed:', err);
         setAutoSaveStatus('error');
@@ -344,13 +347,15 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [formData, denominations, date, stickSold, potSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent]);
+  }, [formData, denominations, date, stickSold, potSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent, entries, entryId, activeFid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const safeId = entryId && entryId.trim() !== '' ? entryId : uuidv4();
+    const matchingEntry = entries?.find(e => e.date === date);
+    const safeId = (matchingEntry && matchingEntry.id) ? matchingEntry.id : (entryId && entryId.trim() !== '' ? entryId : uuidv4());
+    if (entryId !== safeId) setEntryId(safeId);
     const entry: DailyEntry = {
       id: safeId,
       date,
@@ -373,15 +378,18 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
       additionalExpenses: parseInt(formData.additionalExpenses) || 0,
       expenseDetails: formData.expenseDetails,
       notes: formData.notes,
-      denominations
+      denominations,
+      franchiseId: activeFid
     };
 
     try {
       await saveEntry(entry);
       try {
-        localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(denominations));
+        localStorage.setItem(getDenomsStorageKey(date, activeFid), JSON.stringify(denominations));
       } catch {}
       setLoading(false);
+      isDirtyRef.current = false;
+      setAutoSaveStatus('saved');
       onSave();
     } catch (err: any) {
       setLoading(false);
@@ -552,7 +560,8 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                         setFormData(prev => ({
                           ...prev,
                           stickLoaded: suggestedLoad.stick.toString(),
-                          potLoaded: suggestedLoad.pot.toString()
+                          potLoaded: suggestedLoad.pot.toString(),
+                          plateLoaded: (suggestedLoad.plate || 0).toString()
                         }));
                       }}
                       className="h-8 rounded-xl text-[10px] font-extrabold uppercase px-3 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10 shrink-0 self-start sm:self-center"
@@ -563,7 +572,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                 )}
                 
                 <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-4">
+                  {settings.enableStick !== false && (<div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availableStick})</span></Label>
                       <Input name="stickLoaded" type="text" inputMode="numeric" value={formData.stickLoaded} onChange={handleChange} onFocus={handleFocus} />
@@ -573,8 +582,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                       <Input name="stickBalance" type="text" inputMode="numeric" value={formData.stickBalance} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                   </div>
+                  )}
 
-                  <div className="grid grid-cols-2 gap-4">
+                  {settings.enablePot !== false && (<div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availablePot})</span></Label>
                       <Input name="potLoaded" type="text" inputMode="numeric" value={formData.potLoaded} onChange={handleChange} onFocus={handleFocus} />
@@ -584,6 +594,19 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                       <Input name="potBalance" type="text" inputMode="numeric" value={formData.potBalance} onChange={handleChange} onFocus={handleFocus} />
                     </div>
                   </div>
+                  )}
+
+                  {settings.enablePlate && (<div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Plate Load <span className="text-purple-700 dark:text-purple-400 font-black">(Inv Bal: {availablePlate})</span></Label>
+                      <Input name="plateLoaded" type="text" inputMode="numeric" value={formData.plateLoaded} onChange={handleChange} onFocus={handleFocus} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Plate Balance</Label>
+                      <Input name="plateBalance" type="text" inputMode="numeric" value={formData.plateBalance} onChange={handleChange} onFocus={handleFocus} />
+                    </div>
+                  </div>
+                  )}
                 </div>
               </div>
 
@@ -632,6 +655,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
               <div className="pt-2">
                 <CashReconciliationCard
                   date={date}
+                  franchiseId={activeFid}
                   cashBagLoaded={cashBagLoaded}
                   expectedSales={expectedSales}
                   discount={discount}

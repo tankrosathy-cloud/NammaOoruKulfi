@@ -18,9 +18,11 @@ import {
 import { Denominations, DailyDenominationsRecord } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { format, parseISO } from 'date-fns';
+import { getDenomsStorageKey } from '../store';
 
 interface CashReconciliationCardProps {
   date?: string;
+  franchiseId?: string | null;
   cashBagLoaded: number;
   expectedSales: number;
   discount: number;
@@ -47,6 +49,7 @@ const DEFAULT_DENOMS: Denominations = {
 
 export default function CashReconciliationCard({
   date,
+  franchiseId,
   cashBagLoaded,
   expectedSales,
   discount,
@@ -109,7 +112,7 @@ export default function CashReconciliationCard({
     
     if (date) {
       try {
-        localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(updated));
+        localStorage.setItem(getDenomsStorageKey(date, franchiseId), JSON.stringify(updated));
       } catch {}
     }
 
@@ -124,7 +127,7 @@ export default function CashReconciliationCard({
     const zeroed = { ...DEFAULT_DENOMS };
     if (date) {
       try {
-        localStorage.setItem(`kulfi_denoms_${date}`, JSON.stringify(zeroed));
+        localStorage.setItem(getDenomsStorageKey(date, franchiseId), JSON.stringify(zeroed));
       } catch {}
     }
     if (onDenominationsChange) {

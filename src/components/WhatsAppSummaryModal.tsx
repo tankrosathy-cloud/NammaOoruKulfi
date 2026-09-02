@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { DailyEntry, InventoryStock, Settings } from '../types';
+import { DailyEntry, InventoryStock, Settings, ExpenseEntry } from '../types';
 import { format, parseISO } from 'date-fns';
+import { useFranchise } from '../context/FranchiseContext';
 import { Button } from './ui/button';
 import { Copy, Check, Share2, MessageCircle, X, Sparkles } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
@@ -8,7 +9,8 @@ import { formatCurrency } from '../lib/utils';
 export function generateWhatsAppClosingText(
   entry: DailyEntry,
   inventory?: InventoryStock | null,
-  settings?: Settings | null
+  settings?: Settings | null,
+  franchiseName?: string
 ): string {
   const stickPrice = settings?.stickPrice || 40;
   const potPrice = settings?.potPrice || 50;
@@ -35,7 +37,7 @@ export function generateWhatsAppClosingText(
 
   const lines: string[] = [
     `🍦 *NAMMA OORU KULFI — DAILY CLOSING* 🍦`,
-    `📍 *Sathyamangalam Cart Operations*`,
+    `📍 *${franchiseName || 'Franchise'} Cart Operations*`,
     `📅 *Date:* ${formattedDate} (${dayOfWeek})`,
     ``,
     `📊 *SALES & PRODUCTION:*`,
@@ -91,6 +93,7 @@ export function generateWhatsAppClosingText(
 }
 
 interface WhatsAppSummaryModalProps {
+  expenses?: ExpenseEntry[];
   isOpen: boolean;
   onClose: () => void;
   entry: DailyEntry | null;
@@ -98,19 +101,14 @@ interface WhatsAppSummaryModalProps {
   settings?: Settings | null;
 }
 
-export default function WhatsAppSummaryModal({
-  isOpen,
-  onClose,
-  entry,
-  inventory,
-  settings
-}: WhatsAppSummaryModalProps) {
+export function WhatsAppSummaryModal({ isOpen, onClose, entry, settings, inventory, expenses }: WhatsAppSummaryModalProps) {
+  const { franchise } = useFranchise();
   const [copied, setCopied] = useState(false);
   const [customPhone, setCustomPhone] = useState('');
 
   if (!isOpen || !entry) return null;
 
-  const summaryText = generateWhatsAppClosingText(entry, inventory, settings);
+  const summaryText = generateWhatsAppClosingText(entry, inventory, settings, franchise?.name);
 
   const handleCopy = async () => {
     try {

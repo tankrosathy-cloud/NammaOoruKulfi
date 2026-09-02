@@ -23,7 +23,7 @@ import {
   useSettings 
 } from '../store';
 import { format } from 'date-fns';
-import MonthlyFinancialStatement from './MonthlyFinancialStatement';
+import { MonthlyFinancialStatement } from './MonthlyFinancialStatement';
 import { 
   exportMultiTabWorkbook, 
   exportSingleSectionCSV, 

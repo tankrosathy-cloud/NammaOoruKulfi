@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, Settings } from '../types';
+import { useFranchise } from '../context/FranchiseContext';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { formatCurrency } from '../lib/utils';
 import { 
@@ -33,19 +34,12 @@ interface MonthlyFinancialStatementProps {
   initialDate?: Date;
 }
 
-export default function MonthlyFinancialStatement({
-  isOpen,
-  onClose,
-  entries,
-  expenses,
-  profitWithdrawals,
-  specialOrders,
-  settings,
-  initialDate = new Date()
-}: MonthlyFinancialStatementProps) {
+export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, profitWithdrawals, specialOrders, settings, initialDate }: MonthlyFinancialStatementProps) {
+  const { franchise } = useFranchise();
   const [selectedMonth, setSelectedMonth] = useState<Date>(initialDate);
 
   const stickPrice = settings?.stickPrice || 40;
+  const platePrice = settings?.platePrice || 75;
   const potPrice = settings?.potPrice || 50;
 
   const handlePrevMonth = () => setSelectedMonth(prev => subMonths(prev, 1));
@@ -96,6 +90,7 @@ export default function MonthlyFinancialStatement({
     // Daily Sales Rollup
     let dailyStickSold = 0;
     let dailyPotSold = 0;
+    let dailyPlateSold = 0;
     let dailyPhonePeTotal = 0;
     let dailyCashBagTotal = 0;
     let dailyCashBagLoaded = 0;
@@ -107,6 +102,7 @@ export default function MonthlyFinancialStatement({
     monthEntries.forEach(e => {
       dailyStickSold += e.stickSold || 0;
       dailyPotSold += e.potSold || 0;
+      dailyPlateSold += e.plateSold || 0;
       dailyPhonePeTotal += e.phonePe || 0;
       dailyCashBagTotal += e.cashBagTotal || 0;
       dailyCashBagLoaded += e.cashBagLoaded || 0;
@@ -124,17 +120,20 @@ export default function MonthlyFinancialStatement({
     // Special Event Orders Rollup
     let specialStickSold = 0;
     let specialPotSold = 0;
+    let specialPlateSold = 0;
     let specialRevenue = 0;
 
     monthSpecials.forEach(order => {
       specialStickSold += order.stickQuantity || 0;
       specialPotSold += order.potQuantity || 0;
+      specialPlateSold += order.plateQuantity || 0;
       specialRevenue += order.amountReceived || 0;
     });
 
     // Combined Totals
     const totalStickSold = dailyStickSold + specialStickSold;
     const totalPotSold = dailyPotSold + specialPotSold;
+    const totalPlateSold = dailyPlateSold + specialPlateSold;
     const grossSalesRevenue = dailyNetSales + specialRevenue;
 
     // Expenses Rollup
@@ -177,9 +176,13 @@ export default function MonthlyFinancialStatement({
       stickRevenue: totalStickSold * stickPrice,
       
       dailyPotSold,
+      dailyPlateSold,
       specialPotSold,
+      specialPlateSold,
       totalPotSold,
+      totalPlateSold,
       potRevenue: totalPotSold * potPrice,
+      plateRevenue: totalPlateSold * platePrice,
 
       specialOrdersCount: monthSpecials.length,
       specialRevenue,
@@ -207,7 +210,7 @@ export default function MonthlyFinancialStatement({
       sebastinShare,
       monthProfits
     };
-  }, [entries, expenses, profitWithdrawals, specialOrders, selectedMonth, stickPrice, potPrice]);
+  }, [entries, expenses, profitWithdrawals, specialOrders, selectedMonth, stickPrice, potPrice, platePrice]);
 
   if (!isOpen) return null;
 
@@ -295,7 +298,7 @@ export default function MonthlyFinancialStatement({
                     Namma Ooru <span className="text-pink-600">Kulfi</span>
                   </h1>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                    Premium Ice Candies & Artisanal Kulfis • Sathyamangalam, Tamil Nadu
+                    Premium Ice Candies & Artisanal Kulfis • {franchise?.name || 'Franchise'}
                   </p>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                     Partners: Yuvaraj & Sebastin
@@ -381,7 +384,7 @@ export default function MonthlyFinancialStatement({
                 Product Volume & Revenue Breakdown
               </h4>
               <span className="text-[9px] font-bold text-slate-500 uppercase">
-                Stick Rate: ₹{stickPrice} • Pot Rate: ₹{potPrice}
+                Stick Rate: ₹{stickPrice} • Pot Rate: ₹{potPrice} • Plate Rate: ₹{platePrice}
               </span>
             </div>
 
@@ -413,7 +416,7 @@ export default function MonthlyFinancialStatement({
                   <td className="p-2.5 text-right text-slate-600">₹{potPrice}</td>
                   <td className="p-2.5 text-right font-black text-slate-900">{formatCurrency(statementData.potRevenue)}</td>
                 </tr>
-                {statementData.specialRevenue > (statementData.specialStickSold * stickPrice + statementData.specialPotSold * potPrice) && (
+                {statementData.specialRevenue > ((statementData.specialStickSold * stickPrice + statementData.specialPotSold * potPrice + statementData.specialPlateSold * platePrice)) && (
                   <tr className="bg-slate-50/50">
                     <td className="p-2.5 font-bold text-slate-700">Special Event Premium / Extras</td>
                     <td className="p-2.5 text-center text-slate-400">—</td>
@@ -421,15 +424,15 @@ export default function MonthlyFinancialStatement({
                     <td className="p-2.5 text-center text-slate-400">—</td>
                     <td className="p-2.5 text-right text-slate-400">—</td>
                     <td className="p-2.5 text-right font-black text-slate-900">
-                      {formatCurrency(statementData.specialRevenue - (statementData.specialStickSold * stickPrice + statementData.specialPotSold * potPrice))}
+                      {formatCurrency(statementData.specialRevenue - ((statementData.specialStickSold * stickPrice + statementData.specialPotSold * potPrice + statementData.specialPlateSold * platePrice)))}
                     </td>
                   </tr>
                 )}
                 <tr className="bg-slate-100/80 font-black text-slate-900">
                   <td className="p-2.5">Total Kulfi Volume & Sales</td>
-                  <td className="p-2.5 text-center">{statementData.dailyStickSold + statementData.dailyPotSold} pcs</td>
-                  <td className="p-2.5 text-center">{statementData.specialStickSold + statementData.specialPotSold} pcs</td>
-                  <td className="p-2.5 text-center text-emerald-700">{statementData.totalStickSold + statementData.totalPotSold} pcs</td>
+                  <td className="p-2.5 text-center">{statementData.dailyStickSold + statementData.dailyPotSold + statementData.dailyPlateSold} pcs</td>
+                  <td className="p-2.5 text-center">{statementData.specialStickSold + statementData.specialPotSold + statementData.specialPlateSold} pcs</td>
+                  <td className="p-2.5 text-center text-emerald-700">{statementData.totalStickSold + statementData.totalPotSold + statementData.totalPlateSold} pcs</td>
                   <td className="p-2.5 text-right">—</td>
                   <td className="p-2.5 text-right text-emerald-700">{formatCurrency(statementData.grossSalesRevenue)}</td>
                 </tr>

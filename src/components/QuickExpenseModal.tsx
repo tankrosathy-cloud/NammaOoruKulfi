@@ -4,7 +4,7 @@ import {
   X, Check, Calendar, User, Fuel, Utensils, Wrench, 
   Package, Home, Receipt, Loader2, Sparkles, Coins, PiggyBank, Boxes
 } from 'lucide-react';
-import { saveExpense } from '../store';
+import { saveExpense, useSettings } from '../store';
 import { ExpenseEntry } from '../types';
 import { auth } from '../lib/firebase';
 
@@ -40,6 +40,7 @@ const QUICK_TAGS: Record<string, string[]> = {
 };
 
 export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: QuickExpenseModalProps) {
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Food');
@@ -50,7 +51,7 @@ export default function QuickExpenseModal({ isOpen, onClose, onSave, isDark }: Q
 
   const currentUserEmail = auth.currentUser?.email || '';
   const currentUsername = currentUserEmail.split('@')[0].toLowerCase();
-  const currentPayerName = currentUsername === 'admin' ? 'Admin' : currentUsername === 'yuvaraj' ? 'Yuvaraj' : 'Nadeem';
+  const currentPayerName = settings?.expensePaidByNames && settings.expensePaidByNames.length > 0 ? settings.expensePaidByNames[0] : 'Owner';
   const [paidBy, setPaidBy] = useState(currentPayerName);
 
   // Reset form state on open

@@ -16,7 +16,7 @@ export interface DayStockLedgerRow {
   specialOrderStick: number;
   totalStickDeducted: number;
   cartBalanceStick: number;
-  closingStick: number; // Available inventory at 11:59 PM
+  closingStick: number;
 
   // Pot Metrics
   openingPot: number;
@@ -25,73 +25,85 @@ export interface DayStockLedgerRow {
   specialOrderPot: number;
   totalPotDeducted: number;
   cartBalancePot: number;
-  closingPot: number; // Available inventory at 11:59 PM
+  closingPot: number;
+
+  // Plate Metrics
+  openingPlate: number;
+  loadedPlate: number;
+  soldPlate: number;
+  specialOrderPlate: number;
+  totalPlateDeducted: number;
+  cartBalancePlate: number;
+  closingPlate: number;
 
   hasEntry: boolean;
   hasSpecialOrder: boolean;
   stockStatusStick: 'healthy' | 'low' | 'out_of_stock';
   stockStatusPot: 'healthy' | 'low' | 'out_of_stock';
+  stockStatusPlate: 'healthy' | 'low' | 'out_of_stock';
 }
 
 export interface AvailableStockStats {
   baseStockDate: string;
   baseStickQty: number;
   basePotQty: number;
-
-  // Real-time Available Stock Today
+  basePlateQty: number;
   availableStick: number;
   availablePot: number;
-
-  // Total Deductions since base date
+  availablePlate: number;
   totalStickSoldSinceBase: number;
   totalPotSoldSinceBase: number;
+  totalPlateSoldSinceBase: number;
   totalSpecialStickSinceBase: number;
   totalSpecialPotSinceBase: number;
+  totalSpecialPlateSinceBase: number;
   totalStickDeductedSinceBase: number;
   totalPotDeductedSinceBase: number;
-
-  // Month-to-date stats
+  totalPlateDeductedSinceBase: number;
   totalStickSoldThisMonth: number;
   totalPotSoldThisMonth: number;
+  totalPlateSoldThisMonth: number;
   avgStickSoldThisMonth: number;
   avgPotSoldThisMonth: number;
+  avgPlateSoldThisMonth: number;
 }
 
-/**
- * Calculates current real-time available stock and monthly summary stats
- */
 export function calculateAvailableStock(
   inventory: InventoryStock | null | undefined,
   entries: DailyEntry[] = [],
   specialOrders: SpecialOrder[] = []
 ): AvailableStockStats {
-  const baseStockDate = (inventory?.lastUpdatedDate || '2026-08-01').split('T')[0];
+  const baseStockDate = inventory?.lastUpdatedDate ? inventory.lastUpdatedDate.split('T')[0] : '2026-08-01';
+  
   const baseStickQty = Math.max(0, Number(inventory?.stickQuantity) || 0);
   const basePotQty = Math.max(0, Number(inventory?.potQuantity) || 0);
+  const basePlateQty = Math.max(0, Number(inventory?.plateQuantity) || 0);
 
-  // Filter entries & special orders on or after the baseline date
   const relevantEntries = entries.filter(e => e.date >= baseStockDate);
-  const relevantSpecialOrders = specialOrders.filter(s => s.date >= baseStockDate);
+  const relevantSpecials = specialOrders.filter(s => s.date >= baseStockDate);
 
   const totalStickSoldSinceBase = relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0);
   const totalPotSoldSinceBase = relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0);
+  const totalPlateSoldSinceBase = relevantEntries.reduce((sum, e) => sum + (e.plateSold || 0), 0);
 
-  const totalSpecialStickSinceBase = relevantSpecialOrders.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
-  const totalSpecialPotSinceBase = relevantSpecialOrders.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+  const totalSpecialStickSinceBase = relevantSpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
+  const totalSpecialPotSinceBase = relevantSpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+  const totalSpecialPlateSinceBase = relevantSpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
 
   const totalStickDeductedSinceBase = totalStickSoldSinceBase + totalSpecialStickSinceBase;
   const totalPotDeductedSinceBase = totalPotSoldSinceBase + totalSpecialPotSinceBase;
+  const totalPlateDeductedSinceBase = totalPlateSoldSinceBase + totalSpecialPlateSinceBase;
 
   const availableStick = Math.max(0, baseStickQty - totalStickDeductedSinceBase);
   const availablePot = Math.max(0, basePotQty - totalPotDeductedSinceBase);
+  const availablePlate = Math.max(0, basePlateQty - totalPlateDeductedSinceBase);
 
-  // Month-to-date performance
   const now = new Date();
-  const currentMonthStartStr = format(startOfMonth(now), 'yyyy-MM-dd');
-  const currentMonthEndStr = format(endOfMonth(now), 'yyyy-MM-dd');
+  const startOfCurMonth = format(startOfMonth(now), 'yyyy-MM-dd');
+  const endOfCurMonth = format(endOfMonth(now), 'yyyy-MM-dd');
 
-  const thisMonthEntries = entries.filter(e => e.date >= currentMonthStartStr && e.date <= currentMonthEndStr);
-  const thisMonthSpecials = specialOrders.filter(s => s.date >= currentMonthStartStr && s.date <= currentMonthEndStr);
+  const thisMonthEntries = entries.filter(e => e.date >= startOfCurMonth && e.date <= endOfCurMonth);
+  const thisMonthSpecials = specialOrders.filter(s => s.date >= startOfCurMonth && s.date <= endOfCurMonth);
 
   const totalStickSoldThisMonth =
     thisMonthEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0) +
@@ -101,6 +113,10 @@ export function calculateAvailableStock(
     thisMonthEntries.reduce((sum, e) => sum + (e.potSold || 0), 0) +
     thisMonthSpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
 
+  const totalPlateSoldThisMonth =
+    thisMonthEntries.reduce((sum, e) => sum + (e.plateSold || 0), 0) +
+    thisMonthSpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
+
   const daysWithActivity = new Set([
     ...thisMonthEntries.map(e => e.date),
     ...thisMonthSpecials.map(s => s.date)
@@ -108,30 +124,34 @@ export function calculateAvailableStock(
 
   const avgStickSoldThisMonth = daysWithActivity > 0 ? Math.round(totalStickSoldThisMonth / daysWithActivity) : 0;
   const avgPotSoldThisMonth = daysWithActivity > 0 ? Math.round(totalPotSoldThisMonth / daysWithActivity) : 0;
+  const avgPlateSoldThisMonth = daysWithActivity > 0 ? Math.round(totalPlateSoldThisMonth / daysWithActivity) : 0;
 
   return {
     baseStockDate,
     baseStickQty,
     basePotQty,
+    basePlateQty,
     availableStick,
     availablePot,
+    availablePlate,
     totalStickSoldSinceBase,
     totalPotSoldSinceBase,
+    totalPlateSoldSinceBase,
     totalSpecialStickSinceBase,
     totalSpecialPotSinceBase,
+    totalSpecialPlateSinceBase,
     totalStickDeductedSinceBase,
     totalPotDeductedSinceBase,
+    totalPlateDeductedSinceBase,
     totalStickSoldThisMonth,
     totalPotSoldThisMonth,
+    totalPlateSoldThisMonth,
     avgStickSoldThisMonth,
-    avgPotSoldThisMonth
+    avgPotSoldThisMonth,
+    avgPlateSoldThisMonth
   };
 }
 
-/**
- * Calculates continuous, mathematically balanced daily stock ledger
- * for every day including Morning Open (00:00 AM) and End-of-Day (11:59 PM) closing stock.
- */
 export function calculateDailyStockLedger(
   inventory: InventoryStock | null | undefined,
   entries: DailyEntry[] = [],
@@ -146,8 +166,8 @@ export function calculateDailyStockLedger(
   const baseStockDate = (inventory?.lastUpdatedDate || '2026-08-01').split('T')[0];
   const baseStickQty = Math.max(0, Number(inventory?.stickQuantity) || 0);
   const basePotQty = Math.max(0, Number(inventory?.potQuantity) || 0);
+  const basePlateQty = Math.max(0, Number(inventory?.plateQuantity) || 0);
 
-  // Determine last N days list
   const requestedDays: string[] = [];
   for (let i = daysCount - 1; i >= 0; i--) {
     try {
@@ -158,7 +178,6 @@ export function calculateDailyStockLedger(
     }
   }
 
-  // Gather all relevant dates
   const allDatesSet = new Set<string>();
   entries.forEach(e => allDatesSet.add(e.date));
   specialOrders.forEach(s => allDatesSet.add(s.date));
@@ -167,12 +186,11 @@ export function calculateDailyStockLedger(
   allDatesSet.add(todayStr);
 
   const sortedDates = Array.from(allDatesSet).filter(Boolean).sort();
-
   const ledgerMap = new Map<string, DayStockLedgerRow>();
 
-  // 1. Forward calculation from baseStockDate onwards
   let runningStick = baseStickQty;
   let runningPot = basePotQty;
+  let runningPlate = basePlateQty;
 
   for (const d of sortedDates) {
     if (d >= baseStockDate) {
@@ -181,14 +199,19 @@ export function calculateDailyStockLedger(
 
       const soldStick = entry ? (entry.stickSold || 0) : 0;
       const soldPot = entry ? (entry.potSold || 0) : 0;
+      const soldPlate = entry ? (entry.plateSold || 0) : 0;
+
       const loadedStick = entry ? (entry.stickLoaded || 0) : 0;
       const loadedPot = entry ? (entry.potLoaded || 0) : 0;
+      const loadedPlate = entry ? (entry.plateLoaded || 0) : 0;
 
       const specialOrderStick = daySpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
       const specialOrderPot = daySpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+      const specialOrderPlate = daySpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
 
       const totalStickDeducted = soldStick + specialOrderStick;
       const totalPotDeducted = soldPot + specialOrderPot;
+      const totalPlateDeducted = soldPlate + specialOrderPlate;
 
       const cartBalanceStick = entry
         ? (entry.stickBalance !== undefined ? entry.stickBalance : Math.max(0, loadedStick - soldStick))
@@ -196,12 +219,17 @@ export function calculateDailyStockLedger(
       const cartBalancePot = entry
         ? (entry.potBalance !== undefined ? entry.potBalance : Math.max(0, loadedPot - soldPot))
         : 0;
+      const cartBalancePlate = entry
+        ? (entry.plateBalance !== undefined ? entry.plateBalance : Math.max(0, loadedPlate - soldPlate))
+        : 0;
 
       const openingStick = runningStick;
       const openingPot = runningPot;
+      const openingPlate = runningPlate;
 
       const closingStick = Math.max(0, openingStick - totalStickDeducted);
       const closingPot = Math.max(0, openingPot - totalPotDeducted);
+      const closingPlate = Math.max(0, openingPlate - totalPlateDeducted);
 
       let displayDate = d;
       let fullDisplayDate = d;
@@ -211,9 +239,7 @@ export function calculateDailyStockLedger(
         displayDate = format(parsed, 'EEE, d MMM');
         fullDisplayDate = format(parsed, 'EEEE, d MMMM yyyy');
         dayName = format(parsed, 'EEEE');
-      } catch {
-        // ignore
-      }
+      } catch {}
 
       const isToday = d === todayStr;
       const isBaseline = d === baseStockDate;
@@ -222,6 +248,8 @@ export function calculateDailyStockLedger(
         closingStick === 0 ? 'out_of_stock' : closingStick < 150 ? 'low' : 'healthy';
       const stockStatusPot: 'healthy' | 'low' | 'out_of_stock' =
         closingPot === 0 ? 'out_of_stock' : closingPot < 15 ? 'low' : 'healthy';
+      const stockStatusPlate: 'healthy' | 'low' | 'out_of_stock' =
+        closingPlate === 0 ? 'out_of_stock' : closingPlate < 15 ? 'low' : 'healthy';
 
       ledgerMap.set(d, {
         date: d,
@@ -244,21 +272,30 @@ export function calculateDailyStockLedger(
         totalPotDeducted,
         cartBalancePot,
         closingPot,
+        openingPlate,
+        loadedPlate,
+        soldPlate,
+        specialOrderPlate,
+        totalPlateDeducted,
+        cartBalancePlate,
+        closingPlate,
         hasEntry: Boolean(entry),
         hasSpecialOrder: daySpecials.length > 0,
         stockStatusStick,
-        stockStatusPot
+        stockStatusPot,
+        stockStatusPlate
       });
 
       runningStick = closingStick;
       runningPot = closingPot;
+      runningPlate = closingPlate;
     }
   }
 
-  // 2. Backward calculation for historical dates before baseStockDate (if any exist)
   const datesBeforeBase = sortedDates.filter(d => d < baseStockDate).reverse();
   let backStick = baseStickQty;
   let backPot = basePotQty;
+  let backPlate = basePlateQty;
 
   for (const d of datesBeforeBase) {
     const entry = entries.find(e => e.date === d);
@@ -266,14 +303,19 @@ export function calculateDailyStockLedger(
 
     const soldStick = entry ? (entry.stickSold || 0) : 0;
     const soldPot = entry ? (entry.potSold || 0) : 0;
+    const soldPlate = entry ? (entry.plateSold || 0) : 0;
+
     const loadedStick = entry ? (entry.stickLoaded || 0) : 0;
     const loadedPot = entry ? (entry.potLoaded || 0) : 0;
+    const loadedPlate = entry ? (entry.plateLoaded || 0) : 0;
 
     const specialOrderStick = daySpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
     const specialOrderPot = daySpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+    const specialOrderPlate = daySpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
 
     const totalStickDeducted = soldStick + specialOrderStick;
     const totalPotDeducted = soldPot + specialOrderPot;
+    const totalPlateDeducted = soldPlate + specialOrderPlate;
 
     const cartBalanceStick = entry
       ? (entry.stickBalance !== undefined ? entry.stickBalance : Math.max(0, loadedStick - soldStick))
@@ -281,12 +323,17 @@ export function calculateDailyStockLedger(
     const cartBalancePot = entry
       ? (entry.potBalance !== undefined ? entry.potBalance : Math.max(0, loadedPot - soldPot))
       : 0;
+    const cartBalancePlate = entry
+      ? (entry.plateBalance !== undefined ? entry.plateBalance : Math.max(0, loadedPlate - soldPlate))
+      : 0;
 
     const closingStick = backStick;
     const closingPot = backPot;
+    const closingPlate = backPlate;
 
     const openingStick = closingStick + totalStickDeducted;
     const openingPot = closingPot + totalPotDeducted;
+    const openingPlate = closingPlate + totalPlateDeducted;
 
     let displayDate = d;
     let fullDisplayDate = d;
@@ -296,9 +343,7 @@ export function calculateDailyStockLedger(
       displayDate = format(parsed, 'EEE, d MMM');
       fullDisplayDate = format(parsed, 'EEEE, d MMMM yyyy');
       dayName = format(parsed, 'EEEE');
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     const isToday = d === todayStr;
     const isBaseline = d === baseStockDate;
@@ -307,6 +352,8 @@ export function calculateDailyStockLedger(
       closingStick === 0 ? 'out_of_stock' : closingStick < 150 ? 'low' : 'healthy';
     const stockStatusPot: 'healthy' | 'low' | 'out_of_stock' =
       closingPot === 0 ? 'out_of_stock' : closingPot < 15 ? 'low' : 'healthy';
+    const stockStatusPlate: 'healthy' | 'low' | 'out_of_stock' =
+      closingPlate === 0 ? 'out_of_stock' : closingPlate < 15 ? 'low' : 'healthy';
 
     ledgerMap.set(d, {
       date: d,
@@ -329,24 +376,30 @@ export function calculateDailyStockLedger(
       totalPotDeducted,
       cartBalancePot,
       closingPot,
+      openingPlate,
+      loadedPlate,
+      soldPlate,
+      specialOrderPlate,
+      totalPlateDeducted,
+      cartBalancePlate,
+      closingPlate,
       hasEntry: Boolean(entry),
       hasSpecialOrder: daySpecials.length > 0,
       stockStatusStick,
-      stockStatusPot
+      stockStatusPot,
+      stockStatusPlate
     });
 
     backStick = openingStick;
     backPot = openingPot;
+    backPlate = openingPlate;
   }
 
-  // Build sorted results
-  const allRows = Array.from(ledgerMap.values()).sort((a, b) => b.date.localeCompare(a.date)); // newest first
-
-  // Specifically extract last 10 days
+  const allRows = Array.from(ledgerMap.values()).sort((a, b) => b.date.localeCompare(a.date));
   const last10DaysRows = requestedDays
     .map(d => ledgerMap.get(d))
     .filter((row): row is DayStockLedgerRow => Boolean(row))
-    .reverse(); // newest first
+    .reverse();
 
   const selectedDateRow = (dateStr: string) => ledgerMap.get(dateStr);
 

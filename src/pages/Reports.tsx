@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings, useDailyDenominations } from '../store';
+import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings, useDailyDenominations, getDenomsStorageKey } from '../store';
 import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -10,8 +10,8 @@ import { useTheme } from '../context/ThemeContext';
 import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from '../types';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import MonthlyFinancialStatement from '../components/MonthlyFinancialStatement';
-import WhatsAppSummaryModal from '../components/WhatsAppSummaryModal';
+import { MonthlyFinancialStatement } from '../components/MonthlyFinancialStatement';
+import { WhatsAppSummaryModal } from '../components/WhatsAppSummaryModal';
 import ExportModal from '../components/ExportModal';
 import { exportMultiTabWorkbook } from '../lib/exportWorkbook';
 
@@ -21,7 +21,7 @@ const getEntryDenominations = (e: DailyEntry, dailyDenomsMap?: Record<string, Da
   }
   if (e.denominations) return e.denominations;
   try {
-    const cached = localStorage.getItem(`kulfi_denoms_${e.date}`);
+    const cached = localStorage.getItem(getDenomsStorageKey(e.date, e.franchiseId));
     if (cached) return JSON.parse(cached);
   } catch {}
   return undefined;
@@ -65,7 +65,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const { inventory } = useInventory();
   const [showSpecialModal, setShowSpecialModal] = useState(false);
   const [specialDeleteConfirmId, setSpecialDeleteConfirmId] = useState<string | null>(null);
-  const [specialForm, setSpecialForm] = useState({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
+  const [specialForm, setSpecialForm] = useState({ eventType: 'Event', stickQuantity: '', potQuantity: '', plateQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
   const [specialEditId, setSpecialEditId] = useState<string | null>(null);
   const [specialOldOrder, setSpecialOldOrder] = useState<SpecialOrder | null>(null);
   const [profitEditId, setProfitEditId] = useState<string | null>(null);
@@ -92,9 +92,10 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
         acc.shortage += (e.shortage || 0);
         acc.stickSold += (e.stickSold || 0);
         acc.potSold += (e.potSold || 0);
+        acc.plateSold += (e.plateSold || 0);
         return acc;
       },
-      { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0 }
+      { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0, plateSold: 0 }
     );
     
     
@@ -103,6 +104,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       totals.revenue += order.amountReceived;
       totals.stickSold += order.stickQuantity;
       totals.potSold += order.potQuantity;
+      totals.plateSold += order.plateQuantity || 0;
     });
 
     // Add standalone expenses to totals for owner only
@@ -167,6 +169,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           eventType: specialForm.eventType,
           stickQuantity: Number(specialForm.stickQuantity) || 0,
           potQuantity: Number(specialForm.potQuantity) || 0,
+          plateQuantity: Number(specialForm.plateQuantity) || 0,
           amountReceived: Number(specialForm.amountReceived),
           notes: specialForm.notes
         });
@@ -184,7 +187,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       setShowSpecialModal(false);
       setSpecialEditId(null);
       setSpecialOldOrder(null);
-      setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
+      setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', plateQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
     } catch (e) {
       console.error(e);
     }
@@ -197,6 +200,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       eventType: order.eventType,
       stickQuantity: order.stickQuantity.toString(),
       potQuantity: order.potQuantity.toString(),
+      plateQuantity: (order.plateQuantity || 0).toString(),
       amountReceived: order.amountReceived.toString(),
       notes: order.notes || '',
       date: order.date
@@ -243,6 +247,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
         </div>
       </div>
       
+      {isOwner && (
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button 
           variant="outline" 
@@ -263,6 +268,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           Export CSV / Excel
         </Button>
       </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         {isOwner && (
@@ -326,7 +332,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       </div>
 
       <Card className={isDark ? 'bg-slate-900/40 border-slate-850/60' : 'bg-slate-50 border-slate-200 shadow-inner'}>
-        <CardContent className="p-5 grid grid-cols-2 gap-4 divide-x divide-slate-200/80 dark:divide-slate-800/40">
+        <CardContent className="p-5 flex flex-wrap gap-6 divide-x divide-slate-200/80 dark:divide-slate-800/40">
           <div>
             <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Stick Sold</p>
             <p className="text-xl font-black text-slate-950 dark:text-white">{totals.stickSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
@@ -993,7 +999,7 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
             <CardContent className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">{specialEditId ? 'Edit Event Order' : 'Log Event / Bulk Order'}</h2>
-                <Button variant="ghost" size="sm" onClick={() => { setShowSpecialModal(false); setSpecialEditId(null); setSpecialOldOrder(null); setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') }); }}>
+                <Button variant="ghost" size="sm" onClick={() => { setShowSpecialModal(false); setSpecialEditId(null); setSpecialOldOrder(null); setSpecialForm({ eventType: 'Event', stickQuantity: '', potQuantity: '', plateQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') }); }}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
@@ -1034,6 +1040,16 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                       type="number" 
                       value={specialForm.potQuantity} 
                       onChange={(e) => setSpecialForm({...specialForm, potQuantity: e.target.value})}
+                      placeholder="e.g. 20"
+                      className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
+                    />
+                  </div>
+                  <div>
+                    <Label>Plates Taken</Label>
+                    <Input 
+                      type="number" 
+                      value={specialForm.plateQuantity} 
+                      onChange={(e) => setSpecialForm({...specialForm, plateQuantity: e.target.value})}
                       placeholder="e.g. 20"
                       className={`mt-1 ${isDark ? 'bg-slate-800 border-slate-700' : ''}`}
                     />
