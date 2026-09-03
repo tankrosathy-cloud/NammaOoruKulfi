@@ -1225,25 +1225,101 @@ export function useLogs(limitCount: number = 100) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const loadSupabaseLogs = async () => {
+      try {
+        const data = await fetchLogsFromSupabase(limitCount);
+        if (isMounted) {
+          if (data) {
+            let filtered = data;
+            if (currentFranchiseId && currentFranchiseId !== 'all') {
+              filtered = data.filter(l => !l.franchiseId || l.franchiseId === currentFranchiseId || l.franchiseId === 'global');
+            }
+            setLogs(filtered);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Error loading logs from Supabase:", err);
+        if (isMounted) setLoading(false);
+      }
+    };
+
     if (isSupabaseConfigured()) {
-      fetchLogsFromSupabase(limitCount).then(data => {
-        if (data) setLogs(data);
-        setLoading(false);
-      });
-      return;
+      loadSupabaseLogs();
+
+      const handleDataUpdated = (e: any) => {
+        const type = e?.detail?.type;
+        const id = e?.detail?.id;
+        if (type === 'logs' || type === 'all') {
+          if (id === 'cleared') {
+            setLogs([]);
+          } else {
+            loadSupabaseLogs();
+          }
+        }
+      };
+      window.addEventListener('app-data-updated', handleDataUpdated);
+      return () => {
+        isMounted = false;
+        window.removeEventListener('app-data-updated', handleDataUpdated);
+      };
     }
 
-    const q = buildFranchiseQuery(db, 'logs', currentFranchiseId, orderBy('timestamp', 'desc'), limit(limitCount));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
-      setLogs(docs);
+    // Firestore listener:
+    // Querying with order by timestamp and filtering in memory avoids composite index requirement
+    const logsColl = collection(db, 'logs');
+    const q = query(logsColl, orderBy('timestamp', 'desc'), limit(limitCount));
+    
+    let unsubscribe: () => void = () => {};
+    try {
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        let docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
+        if (currentFranchiseId && currentFranchiseId !== 'all') {
+          docs = docs.filter(l => !l.franchiseId || l.franchiseId === currentFranchiseId || l.franchiseId === 'global');
+        }
+        if (isMounted) {
+          setLogs(docs);
+          setLoading(false);
+        }
+      }, (error) => {
+        console.warn("Realtime logs snapshot with order warning:", error);
+        const fallbackUnsub = onSnapshot(logsColl, (snapshot) => {
+          let docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
+          if (currentFranchiseId && currentFranchiseId !== 'all') {
+            docs = docs.filter(l => !l.franchiseId || l.franchiseId === currentFranchiseId || l.franchiseId === 'global');
+          }
+          docs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+          if (isMounted) {
+            setLogs(docs.slice(0, limitCount));
+            setLoading(false);
+          }
+        }, (err2) => {
+          console.error("Firestore logs fallback error:", err2);
+          if (isMounted) setLoading(false);
+        });
+        unsubscribe = fallbackUnsub;
+      });
+    } catch (e) {
+      console.error("Failed to attach logs snapshot:", e);
       setLoading(false);
-    }, (error) => {
-      console.error("Error fetching logs in realtime:", error);
-      setLoading(false);
-    });
+    }
 
-    return () => unsubscribe();
+    const handleDataUpdated = (e: any) => {
+      const type = e?.detail?.type;
+      const id = e?.detail?.id;
+      if ((type === 'logs' || type === 'all') && id === 'cleared') {
+        setLogs([]);
+      }
+    };
+    window.addEventListener('app-data-updated', handleDataUpdated);
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+      window.removeEventListener('app-data-updated', handleDataUpdated);
+    };
   }, [limitCount]);
 
   return { logs, loading };
@@ -1257,6 +1333,7 @@ export async function addLog(action: string, details: string, deletedPayload?: a
     userEmail: user?.email || 'Admin',
     action,
     details,
+    franchiseId: currentFranchiseId || 'global',
   };
   if (deletedPayload !== undefined && deletedPayload !== null) {
     log.deletedPayload = JSON.stringify(deletedPayload);
@@ -1268,9 +1345,10 @@ export async function addLog(action: string, details: string, deletedPayload?: a
     try {
       await setDoc(doc(db, 'logs', log.id), log);
     } catch (error) {
-      // Non-fatal
+      console.warn("Firestore addLog error:", error);
     }
   }
+  triggerDataUpdated('logs', log.id);
 }
 
 export async function revokeDeletedRecord(log: AppLog): Promise<void> {
@@ -1298,6 +1376,7 @@ export async function revokeDeletedRecord(log: AppLog): Promise<void> {
       userEmail: log.userEmail,
       action: `${log.action}_REVOKED`,
       details: `${log.details} (REVOKED/RESTORED)`,
+      franchiseId: log.franchiseId || currentFranchiseId || 'global',
     };
     
     if (isSupabaseConfigured()) {
@@ -1314,15 +1393,43 @@ export async function revokeDeletedRecord(log: AppLog): Promise<void> {
 export async function clearLogs(): Promise<void> {
   triggerWriteStart();
   try {
+    let supabaseSuccess = true;
     if (isSupabaseConfigured()) {
-      await clearLogsFromSupabase();
-    } else {
-      const q = buildFranchiseQuery(db, 'logs', currentFranchiseId);
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(document => deleteDoc(doc(db, 'logs', document.id)));
-      await Promise.all(deletePromises);
+      supabaseSuccess = await clearLogsFromSupabase();
     }
-    await addLog('CLEAR_LOGS', 'Cleared all application history logs');
+    
+    // Clear from Firestore as well to keep both databases in sync
+    try {
+      const logsColl = collection(db, 'logs');
+      const snapshot = await getDocs(logsColl);
+      if (!snapshot.empty) {
+        const docs = snapshot.docs;
+        const toDelete = (currentFranchiseId && currentFranchiseId !== 'all')
+          ? docs.filter(d => {
+              const data = d.data();
+              return !data.franchiseId || data.franchiseId === currentFranchiseId || data.franchiseId === 'global';
+            })
+          : docs;
+
+        const batchSize = 300;
+        for (let i = 0; i < toDelete.length; i += batchSize) {
+          const chunk = toDelete.slice(i, i + batchSize);
+          await Promise.all(chunk.map(d => deleteDoc(doc(db, 'logs', d.id))));
+        }
+      }
+    } catch (fsErr) {
+      console.error("Error clearing logs from Firestore:", fsErr);
+      if (!isSupabaseConfigured()) {
+        throw fsErr;
+      }
+    }
+
+    if (!supabaseSuccess && isSupabaseConfigured()) {
+      throw new Error("Failed to clear logs from Supabase database.");
+    }
+
+    // Trigger update so all listeners instantly clear their view
+    triggerDataUpdated('logs', 'cleared');
   } catch (error) {
     console.error("Error clearing logs:", error);
     throw error;

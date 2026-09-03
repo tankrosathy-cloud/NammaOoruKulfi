@@ -65,8 +65,8 @@ service cloud.firestore {
     }
 
     match /logs/{logId} {
-      allow read, update, delete: if isSuperAdmin() || isFranchiseMember(resource.data.franchiseId);
-      allow create: if isSuperAdmin() || isFranchiseMember(request.resource.data.franchiseId);
+      allow read, create, delete: if isAuthenticated();
+      allow update: if isAuthenticated();
     }
 
     match /settings/{docId} {

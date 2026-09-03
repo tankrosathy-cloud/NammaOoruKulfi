@@ -12,14 +12,18 @@ export default function HistoryLogs() {
   const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleClear = async () => {
     setClearing(true);
     try {
       await clearLogs();
       setConfirmClear(false);
-    } catch (error) {
+      setSuccessMsg('All history logs cleared successfully.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (error: any) {
       console.error("Failed to clear logs:", error);
+      alert("Failed to clear logs: " + (error?.message || "Please check database permissions"));
     } finally {
       setClearing(false);
     }
@@ -74,6 +78,12 @@ export default function HistoryLogs() {
           </div>
         )}
       </div>
+
+      {successMsg && (
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-xl text-center">
+          {successMsg}
+        </div>
+      )}
 
       {logs.length === 0 ? (
         <p className="text-xs font-extrabold uppercase tracking-wider text-slate-700 text-center py-6 bg-slate-100 dark:bg-slate-900/50 rounded-3xl border border-slate-300 dark:border-slate-800">

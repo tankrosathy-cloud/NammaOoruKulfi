@@ -37,6 +37,12 @@
       "description": "Global settings for the franchise.",
       "fields": [],
       "rules": ["allow read, write: if true;"]
+    },
+    {
+      "name": "logs",
+      "description": "Audit history logs.",
+      "fields": [],
+      "rules": ["allow read, write, delete: if request.auth != null;"]
     }
   ]
 }

@@ -606,17 +606,23 @@ export async function fetchLogsFromSupabase(limitCount: number = 100): Promise<A
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('app_logs')
-    .select('*')
-    .order('timestamp', { ascending: false })
-    .limit(limitCount);
+  try {
+    const { data, error } = await client
+      .from('app_logs')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(limitCount);
 
-  if (error) {
+    if (error) {
+      console.warn('Supabase fetch logs error:', error);
+      return null;
+    }
+
+    return (data || []).map(rowToLog);
+  } catch (e) {
+    console.error('Exception fetching logs from Supabase:', e);
     return null;
   }
-
-  return (data || []).map(rowToLog);
 }
 
 export async function insertLogToSupabase(log: AppLog): Promise<boolean> {
@@ -626,6 +632,12 @@ export async function insertLogToSupabase(log: AppLog): Promise<boolean> {
   const row = logToRow(log);
   const { error } = await client.from('app_logs').insert(row);
   if (error) {
+    // If franchise_id column doesn't exist yet in Supabase, retry without franchise_id
+    if (error.code === 'PGRST204' || error.message?.includes('franchise_id')) {
+      const { franchise_id, ...rowWithoutFid } = row as any;
+      const { error: retryError } = await client.from('app_logs').insert(rowWithoutFid);
+      if (!retryError) return true;
+    }
     console.warn('Supabase insert log warning:', error);
     return false;
   }
@@ -636,12 +648,31 @@ export async function clearLogsFromSupabase(): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
-  const { error } = await client.from('app_logs').delete().neq('id', 'placeholder');
-  if (error) {
-    console.error('Supabase clear logs error:', error);
+  try {
+    if (currentFranchiseId && currentFranchiseId !== 'all') {
+      try {
+        const { error: fidErr } = await client.from('app_logs').delete().eq('franchise_id', currentFranchiseId);
+        if (!fidErr) {
+          return true;
+        }
+      } catch {}
+    }
+
+    // Delete all logs using a condition that matches every valid ID
+    const { error } = await client.from('app_logs').delete().neq('id', '__empty_dummy_placeholder__');
+    if (error) {
+      console.error('Supabase clear logs error:', error);
+      const { error: error2 } = await client.from('app_logs').delete().gt('id', '');
+      if (error2) {
+        console.error('Supabase clear logs fallback error:', error2);
+        return false;
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('Exception clearing logs from Supabase:', err);
     return false;
   }
-  return true;
 }
 
 // -------------------------------------------------------------
