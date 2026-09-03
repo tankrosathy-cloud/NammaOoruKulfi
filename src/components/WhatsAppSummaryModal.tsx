@@ -14,6 +14,8 @@ export function generateWhatsAppClosingText(
 ): string {
   const stickPrice = settings?.stickPrice || 40;
   const potPrice = settings?.potPrice || 50;
+  const platePrice = settings?.platePrice || 75;
+  const enablePlate = settings?.enablePlate !== false || (entry.plateLoaded || 0) > 0 || (entry.plateSold || 0) > 0;
 
   let formattedDate = entry.date;
   let dayOfWeek = '';
@@ -25,8 +27,8 @@ export function generateWhatsAppClosingText(
     // keep default
   }
 
-  const grossSales = (entry.stickSold * stickPrice) + (entry.potSold * potPrice);
-  const totalKulfis = (entry.stickSold || 0) + (entry.potSold || 0);
+  const grossSales = (entry.stickSold * stickPrice) + (entry.potSold * potPrice) + ((entry.plateSold || 0) * platePrice);
+  const totalKulfis = (entry.stickSold || 0) + (entry.potSold || 0) + (entry.plateSold || 0);
   const discount = entry.discount || 0;
   const cartExpenses = (entry.expenses || 0) + (entry.additionalExpenses || 0);
   const netSales = Math.max(0, (entry.actualAmount || 0) - (entry.cashBagLoaded || 0) + cartExpenses + (entry.bonus || 0));
@@ -34,6 +36,7 @@ export function generateWhatsAppClosingText(
   // Available stock calculation
   const stickStockRemaining = inventory?.stickQuantity !== undefined ? inventory.stickQuantity : null;
   const potStockRemaining = inventory?.potQuantity !== undefined ? inventory.potQuantity : null;
+  const plateStockRemaining = inventory?.plateQuantity !== undefined ? inventory.plateQuantity : null;
 
   const lines: string[] = [
     `🍦 *NAMMA OORU KULFI — DAILY CLOSING* 🍦`,
@@ -41,8 +44,11 @@ export function generateWhatsAppClosingText(
     `📅 *Date:* ${formattedDate} (${dayOfWeek})`,
     ``,
     `📊 *SALES & PRODUCTION:*`,
-    `• Stick Kulfi (₹${stickPrice}): ${entry.stickLoaded || 0} loaded → ${entry.stickBalance ?? 0} bal = *${entry.stickSold || 0} sold* (₹${(entry.stickSold * stickPrice).toLocaleString('en-IN')})`,
-    `• Pot Kulfi (₹${potPrice}): ${entry.potLoaded || 0} loaded → ${entry.potBalance ?? 0} bal = *${entry.potSold || 0} sold* (₹${(entry.potSold * potPrice).toLocaleString('en-IN')})`,
+    `• Stick Kulfi (₹${stickPrice}): ${entry.stickLoaded || 0} loaded → ${entry.stickBalance ?? (entry.stickLoaded !== undefined ? Math.max(0, (entry.stickLoaded || 0) - (entry.stickSold || 0)) : 0)} bal = *${entry.stickSold || 0} sold* (₹${(entry.stickSold * stickPrice).toLocaleString('en-IN')})`,
+    `• Pot Kulfi (₹${potPrice}): ${entry.potLoaded || 0} loaded → ${entry.potBalance ?? (entry.potLoaded !== undefined ? Math.max(0, (entry.potLoaded || 0) - (entry.potSold || 0)) : 0)} bal = *${entry.potSold || 0} sold* (₹${(entry.potSold * potPrice).toLocaleString('en-IN')})`,
+    ...(enablePlate ? [
+      `• Plate Kulfi (₹${platePrice}): ${entry.plateLoaded || 0} loaded → ${entry.plateBalance ?? (entry.plateLoaded !== undefined ? Math.max(0, (entry.plateLoaded || 0) - (entry.plateSold || 0)) : 0)} bal = *${entry.plateSold || 0} sold* (₹${((entry.plateSold || 0) * platePrice).toLocaleString('en-IN')})`
+    ] : []),
     `• *Total Kulfis Sold:* *${totalKulfis} pcs*`,
     `• *Gross Sales:* *₹${grossSales.toLocaleString('en-IN')}*`,
     discount > 0 ? `• *Discount/Offer:* -₹${discount.toLocaleString('en-IN')}` : '',
@@ -73,7 +79,8 @@ export function generateWhatsAppClosingText(
       ``,
       `📦 *WAREHOUSE STOCK BALANCE:*`,
       `• Stick Kulfi: *${stickStockRemaining} pcs*`,
-      `• Pot Kulfi: *${potStockRemaining} pcs*`
+      `• Pot Kulfi: *${potStockRemaining} pcs*`,
+      ...(enablePlate && plateStockRemaining !== null ? [`• Plate Kulfi: *${plateStockRemaining} pcs*`] : [])
     );
   }
 

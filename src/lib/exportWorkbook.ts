@@ -123,6 +123,9 @@ export function exportMultiTabWorkbook(options: ExportDataOptions) {
       'Pot Loaded': e.potLoaded || 0,
       'Pot Cart Balance': e.potBalance ?? Math.max(0, (e.potLoaded || 0) - (e.potSold || 0)),
       'Pot Sold': e.potSold || 0,
+      'Plate Loaded': e.plateLoaded || 0,
+      'Plate Cart Balance': e.plateBalance ?? Math.max(0, (e.plateLoaded || 0) - (e.plateSold || 0)),
+      'Plate Sold': e.plateSold || 0,
       'Given Cash Bag Loaded (₹)': e.cashBagLoaded || 0,
       'Cash Bag Total (₹)': e.cashBagTotal || 0,
       'PhonePe / UPI (₹)': e.phonePe || 0,
@@ -293,7 +296,9 @@ export function exportSingleSectionCSV(
     filePrefix = 'Daily_Sales';
     headers = [
       'Date', 'Day', 'Stick Loaded', 'Stick Balance', 'Stick Sold',
-      'Pot Loaded', 'Pot Balance', 'Pot Sold', 'Given Cash Bag Loaded',
+      'Pot Loaded', 'Pot Balance', 'Pot Sold',
+      'Plate Loaded', 'Plate Balance', 'Plate Sold',
+      'Given Cash Bag Loaded',
       'Cash Bag Total', 'PhonePe/UPI', 'Discount', 'Required Amount',
       'Actual Amount', 'Gross Sales Revenue', 'Daily Expenses', 'Expense Details',
       'Bonus', 'Shortage', 'Net Cash Handover', 'Notes'
@@ -314,6 +319,9 @@ export function exportSingleSectionCSV(
         e.potLoaded || 0,
         e.potBalance ?? Math.max(0, (e.potLoaded || 0) - (e.potSold || 0)),
         e.potSold || 0,
+        e.plateLoaded || 0,
+        e.plateBalance ?? Math.max(0, (e.plateLoaded || 0) - (e.plateSold || 0)),
+        e.plateSold || 0,
         e.cashBagLoaded || 0,
         e.cashBagTotal || 0,
         e.phonePe || 0,
@@ -435,7 +443,9 @@ export function exportCombinedAllSectionsCSV(options: ExportDataOptions) {
   lines.push('=== SECTION 1: DAILY SALES & REVENUE ===');
   lines.push([
     'Date', 'Day', 'Stick Loaded', 'Stick Balance', 'Stick Sold',
-    'Pot Loaded', 'Pot Balance', 'Pot Sold', 'Given Cash Bag Loaded',
+    'Pot Loaded', 'Pot Balance', 'Pot Sold',
+    'Plate Loaded', 'Plate Balance', 'Plate Sold',
+    'Given Cash Bag Loaded',
     'Cash Bag Total', 'PhonePe/UPI', 'Discount', 'Required Amount',
     'Actual Amount', 'Gross Sales Revenue', 'Daily Expenses', 'Expense Details',
     'Bonus', 'Shortage', 'Net Cash Handover', 'Notes'
@@ -456,6 +466,9 @@ export function exportCombinedAllSectionsCSV(options: ExportDataOptions) {
       e.potLoaded || 0,
       e.potBalance ?? Math.max(0, (e.potLoaded || 0) - (e.potSold || 0)),
       e.potSold || 0,
+      e.plateLoaded || 0,
+      e.plateBalance ?? Math.max(0, (e.plateLoaded || 0) - (e.plateSold || 0)),
+      e.plateSold || 0,
       e.cashBagLoaded || 0,
       e.cashBagTotal || 0,
       e.phonePe || 0,

@@ -271,10 +271,10 @@ export async function fetchEntriesFromSupabase(): Promise<DailyEntry[] | null> {
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('entries')
-    .select('*')
-    .order('date', { ascending: false });
+  let query = client.from('entries').select('*').order('date', { ascending: false });
+  if (currentFranchiseId && currentFranchiseId !== 'all') { query = query.eq('franchise_id', currentFranchiseId); }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Supabase fetch entries error:', error);
@@ -297,6 +297,7 @@ export async function upsertEntryToSupabase(entry: DailyEntry, userId: string = 
       err.code === '23505' ||
       str.includes('23505') ||
       str.includes('entries_date_key') ||
+      str.includes('entries_date_franchise_id_key') ||
       str.includes('already exists') ||
       str.includes('duplicate key')
     );
@@ -304,11 +305,12 @@ export async function upsertEntryToSupabase(entry: DailyEntry, userId: string = 
 
   const handleUniqueDateViolation = async (currentRow: any, origError: any) => {
     try {
-      // Find the existing row for this date (regardless of franchise_id filter)
+      // Find the existing row for this date and franchise
       const { data: existingData } = await client
         .from('entries')
         .select('id')
         .eq('date', currentRow.date)
+        .eq('franchise_id', currentRow.franchise_id)
         .maybeSingle();
 
       if (existingData && existingData.id) {
@@ -397,10 +399,10 @@ export async function fetchExpensesFromSupabase(): Promise<ExpenseEntry[] | null
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('expenses')
-    .select('*')
-    .order('date', { ascending: false });
+  let query = client.from('expenses').select('*').order('date', { ascending: false });
+  if (currentFranchiseId && currentFranchiseId !== 'all') { query = query.eq('franchise_id', currentFranchiseId); }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Supabase fetch expenses error:', error);
@@ -439,10 +441,10 @@ export async function fetchSpecialOrdersFromSupabase(): Promise<SpecialOrder[] |
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('special_orders')
-    .select('*')
-    .order('date', { ascending: false });
+  let query = client.from('special_orders').select('*').order('date', { ascending: false });
+  if (currentFranchiseId && currentFranchiseId !== 'all') { query = query.eq('franchise_id', currentFranchiseId); }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Supabase fetch special orders error:', error);
@@ -563,10 +565,10 @@ export async function fetchProfitWithdrawalsFromSupabase(): Promise<ProfitWithdr
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('profit_withdrawals')
-    .select('*')
-    .order('date', { ascending: false });
+  let query = client.from('profit_withdrawals').select('*').order('date', { ascending: false });
+  if (currentFranchiseId && currentFranchiseId !== 'all') { query = query.eq('franchise_id', currentFranchiseId); }
+
+  const { data, error } = await query;
 
   if (error) {
     return null;

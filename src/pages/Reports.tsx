@@ -341,6 +341,12 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
             <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Pot Sold</p>
             <p className="text-xl font-black text-slate-950 dark:text-white">{totals.potSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
           </div>
+          {(settings?.enablePlate !== false || totals.plateSold > 0) && (
+            <div className="pl-4">
+              <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-amber-500 font-bold' : 'text-amber-800 font-black'}`}>Total Plate Sold</p>
+              <p className="text-xl font-black text-slate-950 dark:text-white">{totals.plateSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -491,6 +497,12 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pot Sold</p>
                            <p className="font-black text-sm text-purple-500">{entry.potSold || 0}</p>
                         </div>
+                        {(settings?.enablePlate !== false || (entry.plateSold || 0) > 0 || (entry.plateLoaded || 0) > 0) && (
+                          <div>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Plate Sold</p>
+                             <p className="font-black text-sm text-amber-600">{entry.plateSold || 0}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {isOwner ? (
@@ -688,6 +700,12 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Pots</p>
                              <p className="font-black text-sm text-purple-500">{order.potQuantity || 0}</p>
                           </div>
+                          {(settings?.enablePlate !== false || (order.plateQuantity || 0) > 0) && (
+                            <div>
+                               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Plates</p>
+                               <p className="font-black text-sm text-emerald-500">{order.plateQuantity || 0}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
@@ -774,15 +792,21 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Inventory Deducted</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className={`grid ${(settings?.enablePlate !== false || viewEntry.plateQuantity) ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                       <div className="bg-amber-500/10 p-2 rounded-lg">
                         <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase">Sticks</p>
-                        <p className={`font-black text-xs text-amber-600 dark:text-amber-400`}>{viewEntry.stickQuantity}</p>
+                        <p className={`font-black text-xs text-amber-600 dark:text-amber-400`}>{viewEntry.stickQuantity || 0}</p>
                       </div>
                       <div className="bg-purple-500/10 p-2 rounded-lg">
                         <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase">Pots</p>
-                        <p className={`font-black text-xs text-purple-600 dark:text-purple-400`}>{viewEntry.potQuantity}</p>
+                        <p className={`font-black text-xs text-purple-600 dark:text-purple-400`}>{viewEntry.potQuantity || 0}</p>
                       </div>
+                      {(settings?.enablePlate !== false || viewEntry.plateQuantity) && (
+                        <div className="bg-emerald-500/10 p-2 rounded-lg">
+                          <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Plates</p>
+                          <p className={`font-black text-xs text-emerald-600 dark:text-emerald-400`}>{viewEntry.plateQuantity || 0}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {viewEntry.notes && (
@@ -837,28 +861,46 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Stick Load</p>
-                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.stickLoaded}</p>
+                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.stickLoaded ?? 0}</p>
                       </div>
                       <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Stick Bal</p>
-                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.stickBalance}</p>
+                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.stickBalance !== undefined ? viewEntry.stickBalance : (viewEntry.stickLoaded !== undefined ? Math.max(0, (viewEntry.stickLoaded || 0) - (viewEntry.stickSold || 0)) : 0)}</p>
                       </div>
                       <div className="bg-cyan-500/10 p-2 rounded-lg">
                         <p className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 uppercase">Stick Sold</p>
-                        <p className={`font-black text-xs text-cyan-600 dark:text-cyan-400`}>{viewEntry.stickSold}</p>
+                        <p className={`font-black text-xs text-cyan-600 dark:text-cyan-400`}>{viewEntry.stickSold ?? 0}</p>
                       </div>
                       <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg mt-2">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Pot Load</p>
-                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.potLoaded}</p>
+                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.potLoaded ?? 0}</p>
                       </div>
                       <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg mt-2">
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Pot Bal</p>
-                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.potBalance}</p>
+                        <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.potBalance !== undefined ? viewEntry.potBalance : (viewEntry.potLoaded !== undefined ? Math.max(0, (viewEntry.potLoaded || 0) - (viewEntry.potSold || 0)) : 0)}</p>
                       </div>
                       <div className="bg-pink-500/10 p-2 rounded-lg mt-2">
                         <p className="text-[9px] font-bold text-pink-600 dark:text-pink-400 uppercase">Pot Sold</p>
-                        <p className={`font-black text-xs text-pink-600 dark:text-pink-400`}>{viewEntry.potSold}</p>
+                        <p className={`font-black text-xs text-pink-600 dark:text-pink-400`}>{viewEntry.potSold ?? 0}</p>
                       </div>
+                      {(settings?.enablePlate !== false || viewEntry.plateLoaded !== undefined || viewEntry.plateBalance !== undefined || (viewEntry.plateSold || 0) > 0) && (
+                        <>
+                          <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg mt-2">
+                            <p className="text-[9px] font-bold text-slate-500 uppercase">Plate Load</p>
+                            <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>{viewEntry.plateLoaded ?? 0}</p>
+                          </div>
+                          <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg mt-2">
+                            <p className="text-[9px] font-bold text-slate-500 uppercase">Plate Bal</p>
+                            <p className={`font-black text-xs ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                              {viewEntry.plateBalance !== undefined ? viewEntry.plateBalance : (viewEntry.plateLoaded !== undefined ? Math.max(0, (viewEntry.plateLoaded || 0) - (viewEntry.plateSold || 0)) : 0)}
+                            </p>
+                          </div>
+                          <div className="bg-amber-500/10 p-2 rounded-lg mt-2">
+                            <p className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase">Plate Sold</p>
+                            <p className="font-black text-xs text-amber-600 dark:text-amber-400">{viewEntry.plateSold ?? 0}</p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 

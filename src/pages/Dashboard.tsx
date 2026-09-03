@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders } from '../store';
+import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders, useProfitWithdrawals } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X, MessageCircle } from 'lucide-react';
@@ -43,7 +43,8 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
   const { expenses, loading: expensesLoading } = useExpenses();
   const { specialOrders } = useSpecialOrders();
   const { inventory, loading: inventoryLoading } = useInventory();
-  const loading = entriesLoading || expensesLoading || inventoryLoading;
+  const { profitWithdrawals, loading: profitLoading } = useProfitWithdrawals();
+  const loading = entriesLoading || expensesLoading || inventoryLoading || profitLoading;
   const { settings } = useSettings();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -228,6 +229,44 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
     return { ...result, multiplier: Math.round(result.multiplier * 100) };
   }, [entries, isWeekend, isHoliday, weatherCondition, tomorrowStr]);
 
+  const overallStats = useMemo(() => {
+    let revenue = 0;
+    let totalExpenses = 0;
+    let shortage = 0;
+
+    entries.forEach(e => {
+      const netSales = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
+      const exp = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
+      revenue += netSales;
+      totalExpenses += exp;
+      shortage += (e.shortage || 0);
+    });
+
+    specialOrders.forEach(order => {
+      revenue += order.amountReceived;
+    });
+
+    expenses.forEach(exp => {
+      totalExpenses += exp.amount;
+    });
+
+    const netSavings = revenue - totalExpenses;
+
+    let profitTaken = 0;
+    profitWithdrawals.forEach(p => {
+      profitTaken += p.amount;
+    });
+
+    const retainedEarnings = netSavings - profitTaken;
+
+    return {
+      shortage,
+      netSavings,
+      profitTaken,
+      retainedEarnings
+    };
+  }, [entries, expenses, specialOrders, profitWithdrawals]);
+
   if (loading) {
     return (
       <div className={`p-6 text-center font-bold uppercase tracking-wider ${
@@ -301,6 +340,37 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
         )}
       </motion.div>
 
+      {/* OVERALL METRICS GRID */}
+      <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
+        <Card className={isDark ? 'bg-purple-950/20 border-purple-900/30' : 'bg-purple-100/90 border-purple-300 shadow-sm shadow-purple-100/30'}>
+          <CardContent className="p-5">
+            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Shortage</p>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.shortage)}</p>
+          </CardContent>
+        </Card>
+        
+        <Card className={isDark ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
+          <CardContent className="p-5">
+            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.netSavings)}</p>
+          </CardContent>
+        </Card>
+
+        <Card className={isDark ? 'bg-fuchsia-950/20 border-fuchsia-900/30' : 'bg-fuchsia-100/90 border-fuchsia-300 shadow-sm shadow-fuchsia-100/30'}>
+          <CardContent className="p-5">
+            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>Profit Taken</p>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.profitTaken)}</p>
+          </CardContent>
+        </Card>
+
+        <Card className={isDark ? 'bg-indigo-950/20 border-indigo-900/30' : 'bg-indigo-100/90 border-indigo-300 shadow-sm shadow-indigo-100/30'}>
+          <CardContent className="p-5">
+            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>Retained Earnings</p>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.retainedEarnings)}</p>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {latest && (
         <motion.div variants={itemVariants}>
           <div className={`p-4 rounded-2xl border ${
@@ -320,7 +390,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
                   </span>
                 </div>
                 <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-0.5">
-                  Stick: <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{latest.stickSold || 0} pcs</span> | Pot: <span className="text-pink-600 dark:text-pink-400 font-extrabold">{latest.potSold || 0} pcs</span> | Actual Cash: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{formatCurrency(latest.actualAmount)}</span>
+                  Stick: <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{latest.stickSold || 0} pcs</span> | Pot: <span className="text-pink-600 dark:text-pink-400 font-extrabold">{latest.potSold || 0} pcs</span> {settings?.enablePlate && (<span>| Plate: <span className="text-amber-600 dark:text-amber-400 font-extrabold">{latest.plateSold || 0} pcs</span> </span>)}| Actual Cash: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{formatCurrency(latest.actualAmount)}</span>
                 </p>
               </div>
             </div>
@@ -829,7 +899,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${settings?.enablePlate ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-2'}`}>
                 <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center relative overflow-hidden`}>
                   <div className="absolute -right-4 -top-4 w-16 h-16 bg-cyan-500/5 rounded-full blur-xl"></div>
                   <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Stick Kulfi Suggestion</span>
@@ -843,6 +913,15 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
                   <span className="text-3xl font-black text-pink-500 leading-none mt-1 relative z-10">{nextDaySuggestion.pot} <span className="text-xs font-bold text-slate-400">pcs</span></span>
                   <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPot} pcs</span>
                 </div>
+
+                {settings?.enablePlate && (
+                  <div className={`p-4 rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'} flex flex-col justify-center relative overflow-hidden col-span-2 md:col-span-1`}>
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-amber-500/5 rounded-full blur-xl"></div>
+                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Plate Kulfi Suggestion</span>
+                    <span className="text-3xl font-black text-amber-500 leading-none mt-1 relative z-10">{nextDaySuggestion.plate} <span className="text-xs font-bold text-slate-400">pcs</span></span>
+                    <span className="text-[9px] font-bold text-slate-500 uppercase mt-1">Avg Sales: {nextDaySuggestion.avgPlate} pcs</span>
+                  </div>
+                )}
               </div>
 
               <div className="p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/15 flex gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold uppercase">
@@ -893,6 +972,9 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
               <div className={`divide-y ${isDark ? 'divide-slate-800/60' : 'divide-slate-100'}`}>
                 <InventoryRow label="Stick Kulfi" loaded={latest.stickLoaded} balance={latest.stickBalance} sold={latest.stickSold} color="cyan" isDark={isDark} />
                 <InventoryRow label="Pot Kulfi" loaded={latest.potLoaded} balance={latest.potBalance} sold={latest.potSold} color="pink" isDark={isDark} />
+                {settings?.enablePlate && (
+                  <InventoryRow label="Plate Kulfi" loaded={latest.plateLoaded} balance={latest.plateBalance} sold={latest.plateSold} color="amber" isDark={isDark} />
+                )}
               </div>
               
               <div className={`p-6 rounded-b-3xl border-t grid grid-cols-2 gap-4 ${

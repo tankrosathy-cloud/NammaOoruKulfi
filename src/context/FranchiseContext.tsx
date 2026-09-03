@@ -10,6 +10,7 @@ interface FranchiseContextType {
   loading: boolean;
   createFranchise: (name: string) => Promise<void>;
   joinFranchise: (inviteCode: string) => Promise<void>;
+  switchFranchise: (franchiseId: string) => Promise<void>;
 }
 
 export const FranchiseContext = createContext<FranchiseContextType>({} as any);
@@ -110,8 +111,24 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
     setFranchise(franchiseData);
   };
 
+  const switchFranchise = async (franchiseId: string) => {
+    if (franchiseId === 'superadmin') {
+      setCurrentFranchiseId(null);
+      window.dispatchEvent(new Event('franchiseChanged'));
+      setFranchise(null);
+      return;
+    }
+    const fDoc = await getDoc(doc(db, 'franchises', franchiseId));
+    if (fDoc.exists()) {
+      const fData = fDoc.data() as Franchise;
+      setCurrentFranchiseId(fData.id);
+      window.dispatchEvent(new Event('franchiseChanged'));
+      setFranchise(fData);
+    }
+  };
+
   return (
-    <FranchiseContext.Provider value={{ profile, franchise, loading, createFranchise, joinFranchise }}>
+    <FranchiseContext.Provider value={{ profile, franchise, loading, createFranchise, joinFranchise, switchFranchise }}>
       {children}
     </FranchiseContext.Provider>
   );

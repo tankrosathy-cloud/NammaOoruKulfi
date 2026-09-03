@@ -4,23 +4,27 @@ import { db } from '../lib/firebase';
 import { Franchise, UserProfile } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useTheme } from '../context/ThemeContext';
-import { Users, Store, Shield, Key } from 'lucide-react';
+import { Users, Store, Shield, Key, Eye } from 'lucide-react';
+import { useFranchise } from '../context/FranchiseContext';
+import { Button } from '../components/ui/button';
 
-export default function SuperAdmin() {
+export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const { switchFranchise } = useFranchise();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const franchisesSnap = await getDocs(query(collection(db, 'franchises')));
-        const franchisesData = franchisesSnap.docs.map(doc => doc.data() as Franchise);
+        const franchisesData = franchisesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Franchise);
         
         const usersSnap = await getDocs(query(collection(db, 'users')));
-        const usersData = usersSnap.docs.map(doc => doc.data() as UserProfile);
+        const usersData = usersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() }) as UserProfile);
 
         setFranchises(franchisesData);
         setUsers(usersData);
@@ -103,13 +107,25 @@ export default function SuperAdmin() {
                       </p>
                     </div>
                   </div>
-                  <div className={`p-3 rounded-lg border ${isDark ? 'bg-amber-950/30 border-amber-900/50' : 'bg-amber-50 border-amber-200'}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1 ${isDark ? 'text-amber-500' : 'text-amber-700'}`}>
-                      <Key className="w-3 h-3" /> Invite Code
-                    </p>
-                    <code className={`text-lg font-black tracking-widest select-all ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                      {franchise.inviteCode}
-                    </code>
+                  <div className={`p-3 rounded-lg border flex flex-col justify-between items-end gap-2 ${isDark ? 'bg-amber-950/30 border-amber-900/50' : 'bg-amber-50 border-amber-200'}`}>
+                    <div>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1 ${isDark ? 'text-amber-500' : 'text-amber-700'}`}>
+                        <Key className="w-3 h-3" /> Invite Code
+                      </p>
+                      <code className={`text-lg font-black tracking-widest select-all ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                        {franchise.inviteCode}
+                      </code>
+                    </div>
+                    <Button 
+                      onClick={async () => {
+                        await switchFranchise(franchise.id);
+                        if (onNavigate) onNavigate('dashboard');
+                      }}
+                      size="sm"
+                      className="mt-2 text-[10px] font-bold uppercase tracking-widest h-8"
+                    >
+                      <Eye className="w-3 h-3 mr-1" /> View Dashboard
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
@@ -150,6 +166,48 @@ export default function SuperAdmin() {
           );
         })}
       </div>
+
+      <h2 className={`text-lg font-bold uppercase tracking-widest mt-12 mb-4 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+        All Registered Users
+      </h2>
+      <Card className={`border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-slate-500 bg-slate-900/80' : 'text-slate-500 bg-slate-50'}`}>
+                <tr>
+                  <th className="px-4 py-3 font-bold">Email</th>
+                  <th className="px-4 py-3 font-bold">UID</th>
+                  <th className="px-4 py-3 font-bold">Role</th>
+                  <th className="px-4 py-3 font-bold">Franchise ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.uid} className={`border-b last:border-0 ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
+                    <td className={`px-4 py-3 font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{u.email}</td>
+                    <td className="px-4 py-3">
+                      <code className={`text-xs px-2 py-1 rounded select-all ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                        {u.uid}
+                      </code>
+                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-500">{u.role}</td>
+                    <td className="px-4 py-3">
+                      {u.franchiseId ? (
+                        <code className={`text-xs px-2 py-1 rounded select-all ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                          {u.franchiseId}
+                        </code>
+                      ) : (
+                        <span className="text-slate-400 text-xs italic">None</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

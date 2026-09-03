@@ -6,7 +6,7 @@
 -- 1. Daily Sales Entries Table
 CREATE TABLE IF NOT EXISTS public.entries (
     id TEXT PRIMARY KEY,
-    date DATE UNIQUE NOT NULL,
+    date DATE NOT NULL,
     stick_loaded INT DEFAULT 0,
     stick_balance INT DEFAULT 0,
     stick_sold INT DEFAULT 0,
@@ -249,3 +249,21 @@ ON CONFLICT (id) DO UPDATE SET
     final_amount = EXCLUDED.final_amount,
     expenses = EXCLUDED.expenses,
     updated_at = NOW();
+
+-- ===================================================================
+-- MIGRATION: Fix Unique Constraint for Multi-Franchise Support
+-- Run this if you are getting duplicate key errors when saving entries
+-- for the same date across different franchises
+-- ===================================================================
+DO $$ 
+BEGIN
+  -- Drop the old unique constraint on date alone
+  ALTER TABLE public.entries DROP CONSTRAINT IF EXISTS entries_date_key;
+  
+  -- Add a new composite unique constraint on (date, franchise_id)
+  -- This allows each franchise to have its own entry for a given date
+  ALTER TABLE public.entries ADD CONSTRAINT entries_date_franchise_id_key UNIQUE (date, franchise_id);
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Constraint migration already applied or constraint not found';
+END $$;

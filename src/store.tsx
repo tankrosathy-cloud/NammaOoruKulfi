@@ -27,12 +27,20 @@ import {
   clearLogsFromSupabase
 } from './lib/supabaseService';
 
-export const ADMIN_USERNAMES = ['nadeem', 'admin', 'administrator', 'yuvaraj', 'tankrosathy'];
+export const ADMIN_USERNAMES = ['nadeem', 'admin', 'administrator', 'yuvaraj', 'tankrosathy', 'nammaoorukulfisathy'];
 
 export let currentFranchiseId: string | null = null;
 export function setCurrentFranchiseId(id: string | null) {
   currentFranchiseId = id;
 }
+
+export function buildFranchiseQuery(dbRef: any, collName: string, fid?: string | null, ...extraClauses: any[]) {
+  if (fid && fid !== 'all' && fid !== 'NONE') {
+    return query(collection(dbRef, collName), where('franchiseId', '==', fid), ...extraClauses);
+  }
+  return query(collection(dbRef, collName), ...extraClauses);
+}
+
 
 export function getDenomsStorageKey(date: string, franchiseId?: string | null): string {
   const fid = (franchiseId !== undefined && franchiseId !== null && franchiseId !== '') 
@@ -122,7 +130,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
   // 2. Fallback or parallel seed to Firestore
   const user = auth.currentUser;
   try {
-    const entriesSnap = await getDocs(query(collection(db, 'entries'), where('franchiseId', '==', currentFranchiseId || 'NONE')));
+    const entriesSnap = await getDocs(buildFranchiseQuery(db, 'entries', currentFranchiseId));
     const existingDates = new Set(entriesSnap.docs.map(d => (d.data() as DailyEntry).date));
 
     for (const entry of INITIAL_AUGUST_ENTRIES) {
@@ -136,7 +144,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
       }
     }
 
-    const expensesSnap = await getDocs(query(collection(db, 'expenses'), where('franchiseId', '==', currentFranchiseId || 'NONE')));
+    const expensesSnap = await getDocs(buildFranchiseQuery(db, 'expenses', currentFranchiseId));
     const existingExpIds = new Set(expensesSnap.docs.map(d => d.id));
     const existingExpSignatures = new Set(expensesSnap.docs.map(d => {
       const data = d.data() as ExpenseEntry;
@@ -186,7 +194,7 @@ export async function getEntries(): Promise<DailyEntry[]> {
     }
   }
 
-  const q = query(collection(db, 'entries'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
+  const q = buildFranchiseQuery(db, 'entries', currentFranchiseId);
   try {
     const snapshot = await getDocs(q);
     const docs = snapshot.docs.map(doc => doc.data() as DailyEntry);
@@ -430,7 +438,7 @@ export async function getExpenses(): Promise<ExpenseEntry[]> {
     }
   }
 
-  const q = query(collection(db, 'expenses'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
+  const q = buildFranchiseQuery(db, 'expenses', currentFranchiseId);
   try {
     const snapshot = await getDocs(q);
     const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
@@ -723,9 +731,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         const dMap: Record<string, DailyDenominationsRecord> = {};
 
         if (supEntries && supEntries.length > 0) {
-          const filteredEntries = activeFid 
-            ? supEntries.filter(e => e.franchiseId === activeFid) 
-            : supEntries.filter(e => !e.franchiseId);
+          const filteredEntries = (activeFid && activeFid !== 'all') ? supEntries.filter(e => e.franchiseId === activeFid) : supEntries;
           setEntries(filteredEntries.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setEntriesLoading(false);
 
@@ -758,11 +764,11 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
         // Also fetch live drafts from Firestore daily_denominations for this franchise
         try {
-          const denomsSnap = await getDocs(query(collection(db, 'daily_denominations'), where('franchiseId', '==', activeFid || 'NONE')));
+          const denomsSnap = await getDocs(buildFranchiseQuery(db, 'daily_denominations', activeFid));
           if (denomsSnap && !denomsSnap.empty) {
             denomsSnap.docs.forEach(docSnap => {
               const d = docSnap.data() as DailyDenominationsRecord;
-              if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+              if (d && (!activeFid || activeFid === 'all' || d.franchiseId === activeFid)) {
                 dMap[d.date || docSnap.id] = d;
               }
             });
@@ -773,18 +779,20 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
         if (supSettings) {
           setSettings(supSettings);
+        } else {
+          setSettings(DEFAULT_SETTINGS);
         }
         setSettingsLoading(false);
 
         if (supInventory) {
           setInventory(supInventory);
+        } else {
+          setInventory(DEFAULT_INVENTORY);
         }
         setInventoryLoading(false);
 
         if (supExpenses && supExpenses.length > 0) {
-          const filteredExpenses = activeFid 
-            ? supExpenses.filter(e => e.franchiseId === activeFid) 
-            : supExpenses.filter(e => !e.franchiseId);
+          const filteredExpenses = (activeFid && activeFid !== 'all') ? supExpenses.filter(e => e.franchiseId === activeFid) : supExpenses;
           setExpenses(filteredExpenses.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setExpensesLoading(false);
         } else {
@@ -793,17 +801,13 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         }
 
         if (supProfits) {
-          const filteredProfits = activeFid 
-            ? supProfits.filter(e => e.franchiseId === activeFid) 
-            : supProfits.filter(e => !e.franchiseId);
+          const filteredProfits = (activeFid && activeFid !== 'all') ? supProfits.filter(e => e.franchiseId === activeFid) : supProfits;
           setProfitWithdrawals(filteredProfits.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setProfitWithdrawalsLoading(false);
         }
 
         if (supSpecials && supSpecials.length > 0) {
-          const filteredSpecials = activeFid 
-            ? supSpecials.filter(e => e.franchiseId === activeFid) 
-            : supSpecials.filter(e => !e.franchiseId);
+          const filteredSpecials = (activeFid && activeFid !== 'all') ? supSpecials.filter(e => e.franchiseId === activeFid) : supSpecials;
           setSpecialOrders(filteredSpecials.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
           setSpecialOrdersLoading(false);
         } else {
@@ -818,9 +822,9 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       // Firestore Fetching
       const fetchCollection = async (collName: string) => {
         try {
-          return await getDocsFromServer(query(collection(db, collName), where('franchiseId', '==', activeFid || 'NONE')));
+          return await getDocsFromServer(buildFranchiseQuery(db, collName, activeFid));
         } catch {
-          return await getDocs(query(collection(db, collName), where('franchiseId', '==', activeFid || 'NONE')));
+          return await getDocs(buildFranchiseQuery(db, collName, activeFid));
         }
       };
 
@@ -854,7 +858,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       if (denomsSnap) {
         denomsSnap.docs.forEach(docSnap => {
           const d = docSnap.data() as DailyDenominationsRecord;
-          if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+          if (d && (!activeFid || activeFid === 'all' || d.franchiseId === activeFid)) {
             dMap[d.date || docSnap.id] = d;
           }
         });
@@ -870,11 +874,15 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       if (settingsSnap && settingsSnap.exists()) {
         const data = settingsSnap.data() as Settings;
         setSettings(data);
+      } else {
+        setSettings(DEFAULT_SETTINGS);
       }
       setSettingsLoading(false);
 
       if (inventorySnap && inventorySnap.exists()) {
         setInventory(inventorySnap.data() as InventoryStock);
+      } else {
+        setInventory(DEFAULT_INVENTORY);
       }
       setInventoryLoading(false);
 
@@ -902,6 +910,12 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       setLastSynced(new Date());
     } catch (err) {
       console.warn("Database sync refresh warning:", err);
+      setEntriesLoading(false);
+      setSettingsLoading(false);
+      setInventoryLoading(false);
+      setExpensesLoading(false);
+      setProfitWithdrawalsLoading(false);
+      setSpecialOrdersLoading(false);
     } finally {
       setIsSyncing(false);
       isRefreshingRef.current = false;
@@ -937,7 +951,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
       try {
         const unsubEntries = onSnapshot(
-          query(collection(db, 'entries'), where('franchiseId', '==', activeFid || 'NONE')),
+          buildFranchiseQuery(db, 'entries', activeFid),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as DailyEntry));
             setEntries(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
@@ -991,7 +1005,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
       try {
         const unsubExpenses = onSnapshot(
-          query(collection(db, 'expenses'), where('franchiseId', '==', activeFid || 'NONE')),
+          buildFranchiseQuery(db, 'expenses', activeFid),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ExpenseEntry));
             const existingSignatures = new Set(docs.map(d => `${d.date}-${d.amount}-${d.category}`));
@@ -1010,7 +1024,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
       try {
         const unsubProfits = onSnapshot(
-          query(collection(db, 'profitWithdrawals'), where('franchiseId', '==', activeFid || 'NONE')),
+          buildFranchiseQuery(db, 'profitWithdrawals', activeFid),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProfitWithdrawal));
             setProfitWithdrawals(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
@@ -1025,7 +1039,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
       try {
         const unsubSpecialOrders = onSnapshot(
-          query(collection(db, 'specialOrders'), where('franchiseId', '==', activeFid || 'NONE')),
+          buildFranchiseQuery(db, 'specialOrders', activeFid),
           (snapshot) => {
             const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SpecialOrder));
             const existingIds = new Set(docs.map(d => d.id));
@@ -1044,12 +1058,12 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
     // This allows real-time keystroke draft syncing across all clients via Firebase.
     try {
       const unsubDenoms = onSnapshot(
-        query(collection(db, 'daily_denominations'), where('franchiseId', '==', activeFid || 'NONE')),
+        buildFranchiseQuery(db, 'daily_denominations', activeFid),
         (snapshot) => {
           const dMap: Record<string, DailyDenominationsRecord> = {};
           snapshot.docs.forEach(docSnap => {
             const d = docSnap.data() as DailyDenominationsRecord;
-            if (d && (d.franchiseId === (activeFid || 'NONE') || !activeFid)) {
+            if (d && (!activeFid || activeFid === 'all' || d.franchiseId === activeFid)) {
               dMap[d.date || docSnap.id] = d;
             }
           });
@@ -1219,7 +1233,7 @@ export function useLogs(limitCount: number = 100) {
       return;
     }
 
-    const q = query(collection(db, 'logs'), where('franchiseId', '==', currentFranchiseId || 'NONE'), orderBy('timestamp', 'desc'), limit(limitCount));
+    const q = buildFranchiseQuery(db, 'logs', currentFranchiseId, orderBy('timestamp', 'desc'), limit(limitCount));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
       setLogs(docs);
@@ -1303,7 +1317,7 @@ export async function clearLogs(): Promise<void> {
     if (isSupabaseConfigured()) {
       await clearLogsFromSupabase();
     } else {
-      const q = query(collection(db, 'logs'), where('franchiseId', '==', currentFranchiseId || 'NONE'));
+      const q = buildFranchiseQuery(db, 'logs', currentFranchiseId);
       const snapshot = await getDocs(q);
       const deletePromises = snapshot.docs.map(document => deleteDoc(doc(db, 'logs', document.id)));
       await Promise.all(deletePromises);

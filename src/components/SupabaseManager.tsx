@@ -195,6 +195,24 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.inventory (id, stick_quantity, pot_quantity, last_updated_date, stick_flavours, pot_flavours)
 VALUES ('global', 0, 0, '2026-08-23', '[{"name": "Pista badam", "quantity": 0}]'::jsonb, '[{"name": "Badam", "quantity": 0}, {"name": "Pistha", "quantity": 0}, {"name": "Pistha badam", "quantity": 0}, {"name": "Shahi gulab", "quantity": 0}]'::jsonb)
 ON CONFLICT (id) DO NOTHING;
+
+-- ===================================================================
+-- MIGRATION: Fix Unique Constraint for Multi-Franchise Support
+-- Run this if you are getting duplicate key errors when saving entries
+-- for the same date across different franchises
+-- ===================================================================
+DO $$ 
+BEGIN
+  -- Drop the old unique constraint on date alone
+  ALTER TABLE public.entries DROP CONSTRAINT IF EXISTS entries_date_key;
+  
+  -- Add a new composite unique constraint on (date, franchise_id)
+  -- This allows each franchise to have its own entry for a given date
+  ALTER TABLE public.entries ADD CONSTRAINT entries_date_franchise_id_key UNIQUE (date, franchise_id);
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Constraint migration already applied or constraint not found';
+END $$;
 `;
 
 export default function SupabaseManager() {

@@ -23,9 +23,9 @@ const DEFAULT_DENOMS: Denominations = {
   coins: 0
 };
 
-// Helper to keep 0 / empty values completely blank in inputs
+// Helper to keep undefined/null values completely blank in inputs
 const numToInputStr = (val: number | string | undefined | null): string => {
-  if (val === undefined || val === null || val === '' || val === 0 || val === '0') {
+  if (val === undefined || val === null || val === '') {
     return '';
   }
   return val.toString();
@@ -347,7 +347,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [formData, denominations, date, stickSold, potSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent, entries, entryId, activeFid]);
+  }, [formData, denominations, date, stickSold, potSold, plateSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent, entries, entryId, activeFid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -365,6 +365,9 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
       potLoaded: parseInt(formData.potLoaded) || 0,
       ...(formData.potBalance !== '' ? { potBalance: parseInt(formData.potBalance) } : {}),
       potSold,
+      plateLoaded: parseInt(formData.plateLoaded) || 0,
+      ...(formData.plateBalance !== '' ? { plateBalance: parseInt(formData.plateBalance) } : {}),
+      plateSold,
       cashBagLoaded: parseInt(formData.cashBagLoaded) || 0,
       cashBagTotal: parseInt(formData.cashBagTotal) || 0,
       phonePe: parseInt(formData.phonePe) || 0,
@@ -692,14 +695,24 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                  <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Shortage</span>
                  <span className={`font-black text-xl ${shortage > 0 ? 'text-pink-600' : 'text-emerald-600 dark:text-emerald-400'}`}>₹{shortage}</span>
                </div>
-               <div className="flex justify-between text-sm items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40">
-                 <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stick Kulfi Sold</span>
-                 <span className="font-black text-sm text-cyan-600 dark:text-cyan-400">{stickSold} pcs</span>
-               </div>
-               <div className="flex justify-between text-sm items-center">
-                 <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pot Kulfi Sold</span>
-                 <span className="font-black text-sm text-purple-600 dark:text-purple-400">{potSold} pcs</span>
-               </div>
+               {settings.enableStick !== false && (
+                 <div className="flex justify-between text-sm items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40">
+                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stick Kulfi Sold</span>
+                   <span className="font-black text-sm text-cyan-600 dark:text-cyan-400">{stickSold} pcs</span>
+                 </div>
+               )}
+               {settings.enablePot !== false && (
+                 <div className={`flex justify-between text-sm items-center ${settings.enableStick === false ? 'pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40' : ''}`}>
+                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pot Kulfi Sold</span>
+                   <span className="font-black text-sm text-purple-600 dark:text-purple-400">{potSold} pcs</span>
+                 </div>
+               )}
+               {settings.enablePlate !== false && (
+                 <div className={`flex justify-between text-sm items-center ${settings.enableStick === false && settings.enablePot === false ? 'pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40' : ''}`}>
+                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Plate Kulfi Sold</span>
+                   <span className="font-black text-sm text-amber-600 dark:text-amber-500">{plateSold} pcs</span>
+                 </div>
+               )}
             </div>
 
           </CardContent>

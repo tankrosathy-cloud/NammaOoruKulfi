@@ -47,7 +47,7 @@ import {
 import { format, parseISO, addDays, subDays, isToday as isTodayDate, startOfMonth, endOfMonth } from 'date-fns';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 import { InventoryStock, UserProfile } from '../types';
 import Planner from './Planner';
@@ -59,7 +59,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, 
 
 export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const currentUsername = (auth.currentUser?.email || '').split('@')[0].toLowerCase();
-  const isAdminUser = currentUsername === 'admin' || currentUsername === 'tankrosathy';
+  const isAdminUser = currentUsername === 'admin' || currentUsername === 'tankrosathy' || currentUsername === 'nammaoorukulfisathy';
 
   
   const handleCopyInvite = async () => {
@@ -159,6 +159,27 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const [passwordMsg, setPasswordMsg] = useState('');
   const [passwordErrorMsg, setPasswordErrorMsg] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const [staffRemoveConfirmId, setStaffRemoveConfirmId] = useState<string | null>(null);
+  const [removingStaffId, setRemovingStaffId] = useState<string | null>(null);
+
+  const handleRemoveStaff = async (staffId: string) => {
+    setRemovingStaffId(staffId);
+    try {
+      await updateDoc(doc(db, 'users', staffId), {
+        franchiseId: null,
+        role: 'user'
+      });
+      setStaffUsers(prev => prev.filter(s => s.uid !== staffId));
+    } catch (err) {
+      console.error("Failed to remove staff:", err);
+      // Fallback alert is okay, but won't block execution if blocked by iframe, 
+      // however let's prefer console error + local UI error if possible.
+    } finally {
+      setRemovingStaffId(null);
+      setStaffRemoveConfirmId(null);
+    }
+  };
 
   useEffect(() => {
     async function fetchStaff() {

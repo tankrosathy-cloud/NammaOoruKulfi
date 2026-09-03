@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './components/Logo';
-import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles } from 'lucide-react';
+import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import AddEntry from './pages/AddEntry';
 import Reports from './pages/Reports';
@@ -20,10 +20,11 @@ function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
 
-  const { profile, franchise } = useFranchise();
+  const { profile, franchise, switchFranchise } = useFranchise();
   const userEmail = auth.currentUser?.email || '';
   const username = userEmail.split('@')[0].toLowerCase();
   const role = profile?.role === 'superadmin' ? 'superadmin' : ((profile?.role === 'owner' || profile?.role === 'manager') ? 'owner' : 'staff');
+  const navRole = (role === 'superadmin' && franchise) ? 'owner' : role;
   useEffect(() => {
     setCurrentUserRole(role === 'owner' ? 'owner' : 'staff');
     
@@ -51,6 +52,9 @@ function AppShellContent() {
   const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin') => {
     if (tab !== 'add') {
       setEditDate(undefined);
+    }
+    if (tab === 'superadmin' && switchFranchise) {
+      switchFranchise('superadmin');
     }
     setActiveTab(tab);
     const mainContainer = document.querySelector('main');
@@ -84,6 +88,18 @@ function AppShellContent() {
           </div>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
+          {role === 'superadmin' && activeTab !== 'superadmin' && (
+            <button 
+              onClick={() => navigateTab('superadmin')}
+              className={`transition-colors p-1.5 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-widest flex items-center gap-1 ${
+                isDark 
+                  ? 'border-cyan-800 text-cyan-400 bg-cyan-950/30 hover:bg-cyan-900/50' 
+                  : 'border-cyan-300 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 shadow-sm'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5" /> Exit
+            </button>
+          )}
           <SyncStatus />
           <button 
             onClick={toggleTheme} 
@@ -134,13 +150,13 @@ function AppShellContent() {
       </header>
       
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
-        {activeTab === 'dashboard' && role === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
+        {activeTab === 'dashboard' && navRole === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
         {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
-        {activeTab === 'expense' && role === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(role === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
-        {activeTab === 'reports' && <Reports role={role as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
-        {activeTab === 'settings' && <SettingsPage role={role as any} />}
-        {activeTab === 'logs' && role === 'owner' && <HistoryLogs />}
-        {activeTab === 'superadmin' && role === 'superadmin' && <SuperAdmin />}
+        {activeTab === 'expense' && navRole === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
+        {activeTab === 'reports' && <Reports role={navRole as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
+        {activeTab === 'settings' && <SettingsPage role={navRole as any} />}
+        {activeTab === 'logs' && navRole === 'owner' && <HistoryLogs />}
+        {activeTab === 'superadmin' && role === 'superadmin' && <SuperAdmin onNavigate={(tab) => navigateTab(tab as any)} />}
       </main>
 
       <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-20 transition-all duration-300 border-t ${
@@ -148,7 +164,16 @@ function AppShellContent() {
           ? 'bg-[#111827]/95 border-slate-800 backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' 
           : 'bg-white border-slate-300 shadow-[0_-4px_24px_rgba(15,23,42,0.1)]'
       }`}>
-        {role === 'owner' && (
+        {role === 'superadmin' && (
+          <NavItem 
+            icon={<Shield className="w-5 h-5" />} 
+            label="S-Admin" 
+            active={activeTab === 'superadmin'} 
+            onClick={() => navigateTab('superadmin')} 
+            isDark={isDark}
+          />
+        )}
+        {navRole === 'owner' && (
           <NavItem 
             icon={<Home className="w-5 h-5" />} 
             label="Home" 
@@ -157,14 +182,14 @@ function AppShellContent() {
             isDark={isDark}
           />
         )}
-        {role !== 'superadmin' && <NavItem 
+        {navRole !== 'superadmin' && <NavItem 
           icon={<PlusCircle className="w-5 h-5" />} 
           label="Job" 
           active={activeTab === 'add'} 
           onClick={() => navigateTab('add')} 
           isDark={isDark}
         />}
-        {role === 'owner' && (
+        {navRole === 'owner' && (
           <NavItem 
             icon={<Wallet className="w-5 h-5" />} 
             label="EXP" 
@@ -173,16 +198,16 @@ function AppShellContent() {
             isDark={isDark}
           />
         )}
-        {role !== 'superadmin' && <NavItem 
+        {navRole !== 'superadmin' && <NavItem 
           icon={<List className="w-5 h-5" />} 
           label="REC" 
           active={activeTab === 'reports'} 
           onClick={() => navigateTab('reports')} 
           isDark={isDark}
         />}
-        {role !== 'superadmin' && <NavItem 
-          icon={role === 'owner' ? <SettingsIcon className="w-5 h-5" /> : <Package className="w-5 h-5" />} 
-          label={role === 'owner' ? "Admin" : "Inv"} 
+        {navRole !== 'superadmin' && <NavItem 
+          icon={navRole === 'owner' ? <SettingsIcon className="w-5 h-5" /> : <Package className="w-5 h-5" />} 
+          label={navRole === 'owner' ? "Admin" : "Inv"} 
           active={activeTab === 'settings'} 
           onClick={() => navigateTab('settings')} 
           isDark={isDark}
@@ -215,11 +240,17 @@ function NavItem({ icon, label, active, onClick, isDark }: { icon: React.ReactNo
 
 
 export default function AppShell() {
-  const { profile } = useFranchise();
-  setCurrentFranchiseId(profile?.franchiseId || null);
+  const { profile, franchise } = useFranchise();
+  
+  let activeFid = franchise?.id || profile?.franchiseId || null;
+  if (profile?.role === 'superadmin' && !franchise) {
+    activeFid = 'all';
+  }
+
+  setCurrentFranchiseId(activeFid);
 
   return (
-    <StoreProvider franchiseId={profile?.franchiseId}>
+    <StoreProvider franchiseId={activeFid}>
       <AppShellContent />
     </StoreProvider>
   );
