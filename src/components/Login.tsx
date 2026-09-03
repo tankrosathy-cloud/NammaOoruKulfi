@@ -39,6 +39,12 @@ export function Login() {
     setError('');
     
     try {
+      try {
+        sessionStorage.setItem('just_logged_in', 'true');
+        sessionStorage.removeItem('namma_active_tab');
+        localStorage.removeItem('namma_active_tab');
+        sessionStorage.removeItem('namma_edit_date');
+      } catch {}
       if (isSignUp) {
         await createUserWithEmailAndPassword(auth, email, password);
       } else {

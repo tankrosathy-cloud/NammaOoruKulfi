@@ -120,7 +120,7 @@ export default function SyncStatus() {
                 ? 'border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30 hover:bg-emerald-100/50 shadow-sm'
                 : 'border-slate-300 dark:border-slate-800 text-cyan-600 dark:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-900/50 shadow-sm'
       }`} 
-      title={!isOnline ? "Offline Mode" : activeSyncing ? "Syncing..." : isSupabase ? "Supabase PostgreSQL Database Synced" : "Cloud Synced"}
+      title={!isOnline ? "Offline Mode" : activeSyncing ? "Syncing with database..." : isSupabase ? "Supabase Database Connected (Click to sync)" : "Cloud Database Connected (Click to sync)"}
     >
       {!isOnline ? (
         <>

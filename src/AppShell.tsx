@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './components/Logo';
-import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield } from 'lucide-react';
+import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield, RotateCw } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import AddEntry from './pages/AddEntry';
 import Reports from './pages/Reports';
@@ -30,14 +30,107 @@ function AppShellContent() {
     
   }, [role]);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'add'));
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(() => {
+    try {
+      const isFreshLogin = sessionStorage.getItem('just_logged_in') === 'true';
+      if (isFreshLogin) {
+        sessionStorage.removeItem('just_logged_in');
+        sessionStorage.removeItem('namma_active_tab');
+        localStorage.removeItem('namma_active_tab');
+        sessionStorage.removeItem('namma_edit_date');
+        return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+      }
+
+      const lastUser = sessionStorage.getItem('namma_logged_user');
+      if (!lastUser || lastUser !== userEmail) {
+        sessionStorage.setItem('namma_logged_user', userEmail);
+        sessionStorage.removeItem('namma_active_tab');
+        localStorage.removeItem('namma_active_tab');
+        sessionStorage.removeItem('namma_edit_date');
+        return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+      }
+
+      const saved = sessionStorage.getItem('namma_active_tab');
+      const validTabs = ['dashboard', 'add', 'expense', 'reports', 'settings', 'logs', 'superadmin'];
+      if (saved && validTabs.includes(saved)) {
+        if (role === 'staff') {
+          if (saved === 'settings' || saved === 'logs' || saved === 'superadmin' || saved === 'dashboard' || saved === 'expense') {
+            return 'reports';
+          }
+        }
+        if (saved === 'superadmin' && role !== 'superadmin') {
+          return role === 'owner' ? 'dashboard' : 'reports';
+        }
+        return saved as any;
+      }
+    } catch {}
+    return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+  });
+
+  useEffect(() => {
+    if (role === 'staff' && (activeTab === 'dashboard' || activeTab === 'expense' || activeTab === 'logs' || activeTab === 'superadmin')) {
+      setActiveTab('reports');
+    }
+  }, [role, activeTab]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('namma_active_tab', activeTab);
+      localStorage.setItem('namma_active_tab', activeTab);
+    } catch {}
+  }, [activeTab]);
 
   useEffect(() => {
     const mainContainer = document.querySelector('main');
     if (mainContainer) mainContainer.scrollTo(0, 0);
   }, [activeTab]);
-  const [editDate, setEditDate] = useState<string | undefined>(undefined);
+
+  const [editDate, setEditDate] = useState<string | undefined>(() => {
+    try {
+      return sessionStorage.getItem('namma_edit_date') || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (editDate) {
+        sessionStorage.setItem('namma_edit_date', editDate);
+      } else {
+        sessionStorage.removeItem('namma_edit_date');
+      }
+    } catch {}
+  }, [editDate]);
+
   const [editExpense, setEditExpense] = useState<any>(undefined);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshPage = () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+
+    try {
+      sessionStorage.setItem('namma_active_tab', activeTab);
+      localStorage.setItem('namma_active_tab', activeTab);
+      if (editDate) {
+        sessionStorage.setItem('namma_edit_date', editDate);
+      } else {
+        sessionStorage.removeItem('namma_edit_date');
+      }
+    } catch (e) {
+      console.warn('Could not save tab state to storage:', e);
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('app-data-updated', { detail: { type: 'refresh' } }));
+    } catch {}
+
+    // Reload with latest data
+    setTimeout(() => {
+      window.location.reload();
+    }, 200);
+  };
   
   const handleEditEntry = (date: string) => {
     setEditDate(date);
@@ -62,6 +155,14 @@ function AppShellContent() {
   };
 
   const handleLogout = async () => {
+    try {
+      sessionStorage.removeItem('namma_active_tab');
+      localStorage.removeItem('namma_active_tab');
+      sessionStorage.removeItem('namma_edit_date');
+      sessionStorage.removeItem('namma_logged_user');
+      localStorage.removeItem('namma_logged_user');
+      sessionStorage.removeItem('just_logged_in');
+    } catch {}
     await signOut(auth);
   };
 
@@ -87,7 +188,7 @@ function AppShellContent() {
             }`}>Namma Ooru <span className="text-pink-500">Kulfi</span></h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {role === 'superadmin' && activeTab !== 'superadmin' && (
             <button 
               onClick={() => navigateTab('superadmin')}
@@ -101,6 +202,25 @@ function AppShellContent() {
             </button>
           )}
           <SyncStatus />
+          <button 
+            id="refresh-page-btn"
+            onClick={handleRefreshPage} 
+            disabled={isRefreshing}
+            className={`transition-all duration-200 p-1.5 px-2 sm:px-2.5 rounded-lg border flex items-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+              isRefreshing
+                ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-sm shadow-cyan-500/20'
+                : isDark 
+                  ? 'border-slate-800 text-cyan-400 hover:text-cyan-300 hover:bg-slate-900/50 bg-slate-900/40 shadow-sm' 
+                  : 'border-slate-300 text-cyan-700 hover:text-cyan-800 hover:bg-slate-100 bg-white shadow-sm'
+            }`}
+            title="Reload page with latest data"
+            aria-label="Reload page with latest data"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+            <span className="hidden sm:inline font-bold text-[10px] uppercase tracking-wider">
+              {isRefreshing ? 'Reloading...' : 'Refresh'}
+            </span>
+          </button>
           <button 
             onClick={toggleTheme} 
             className={`transition-colors p-1.5 rounded-lg border ${

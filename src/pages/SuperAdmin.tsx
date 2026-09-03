@@ -4,7 +4,7 @@ import { db } from '../lib/firebase';
 import { Franchise, UserProfile } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useTheme } from '../context/ThemeContext';
-import { Users, Store, Shield, Key, Eye } from 'lucide-react';
+import { Users, Store, Shield, Key, Eye, RotateCw } from 'lucide-react';
 import { useFranchise } from '../context/FranchiseContext';
 import { Button } from '../components/ui/button';
 
@@ -12,10 +12,18 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
   const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const { switchFranchise } = useFranchise();
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 200);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -47,11 +55,29 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <Shield className={`w-8 h-8 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
-        <h1 className={`text-2xl font-black uppercase tracking-widest ${isDark ? 'text-white' : 'text-slate-900'}`}>
-          Super Admin Control Panel
-        </h1>
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <Shield className={`w-8 h-8 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
+          <h1 className={`text-2xl font-black uppercase tracking-widest ${isDark ? 'text-white' : 'text-slate-900'}`}>
+            Super Admin Control Panel
+          </h1>
+        </div>
+        <button
+          id="superadmin-refresh-btn"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${
+            isRefreshing
+              ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400'
+              : isDark 
+                ? 'border-slate-800 text-cyan-400 hover:bg-slate-900/50 bg-slate-900/30' 
+                : 'border-slate-300 text-cyan-700 hover:bg-slate-100 bg-white shadow-sm'
+          }`}
+          title="Reload page with latest data"
+        >
+          <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+          <span>{isRefreshing ? 'Reloading...' : 'Refresh'}</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
