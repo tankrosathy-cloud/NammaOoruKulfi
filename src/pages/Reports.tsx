@@ -69,10 +69,11 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const [specialEditId, setSpecialEditId] = useState<string | null>(null);
   const [specialOldOrder, setSpecialOldOrder] = useState<SpecialOrder | null>(null);
   const [profitEditId, setProfitEditId] = useState<string | null>(null);
-const [viewEntry, setViewEntry] = useState<any | null>(null);
+  const [viewEntry, setViewEntry] = useState<any | null>(null);
   const [activeListTab, setActiveListTab] = useState<string>('entries');
+  const [timeframe, setTimeframe] = useState<'monthly' | 'lifetime'>('monthly');
 
-  const { filteredEntries, filteredExpenses, filteredProfits, filteredSpecials, chartData, totals, profitTaken, retainedEarnings } = useMemo(() => {
+  const { filteredEntries, filteredExpenses, filteredProfits, filteredSpecials, chartData, monthlyTotals, monthlyProfitTaken, monthlyRetainedEarnings } = useMemo(() => {
     const filteredExps = expenses.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const filteredProfs = profitWithdrawals.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const filteredSpecials = specialOrders.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -98,7 +99,6 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       { revenue: 0, expenses: 0, shortage: 0, finalAmount: 0, stickSold: 0, potSold: 0, plateSold: 0 }
     );
     
-    
     // Add special orders to revenue and items sold
     filteredSpecials.forEach(order => {
       totals.revenue += order.amountReceived;
@@ -123,8 +123,100 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
     });
     const retainedEarnings = totals.finalAmount - profitTaken;
 
-    return { filteredEntries: filtered, filteredExpenses: filteredExps, filteredProfits: filteredProfs, filteredSpecials, chartData, totals, profitTaken, retainedEarnings };
-  }, [entries, expenses, profitWithdrawals, specialOrders, currentDate]);
+    return { 
+      filteredEntries: filtered, 
+      filteredExpenses: filteredExps, 
+      filteredProfits: filteredProfs, 
+      filteredSpecials, 
+      chartData, 
+      monthlyTotals: totals, 
+      monthlyProfitTaken: profitTaken, 
+      monthlyRetainedEarnings: retainedEarnings 
+    };
+  }, [entries, expenses, profitWithdrawals, specialOrders, currentDate, isOwner]);
+
+  // Lifetime all-time data across all records
+  const lifetimeTotals = useMemo(() => {
+    let revenue = 0;
+    let expensesTotal = 0;
+    let shortage = 0;
+    let stickSold = 0;
+    let potSold = 0;
+    let plateSold = 0;
+
+    entries.forEach(e => {
+      const netSales = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
+      const exp = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
+      revenue += netSales;
+      expensesTotal += exp;
+      shortage += (e.shortage || 0);
+      stickSold += (e.stickSold || 0);
+      potSold += (e.potSold || 0);
+      plateSold += (e.plateSold || 0);
+    });
+
+    specialOrders.forEach(order => {
+      revenue += order.amountReceived;
+      stickSold += order.stickQuantity;
+      potSold += order.potQuantity;
+      plateSold += (order.plateQuantity || 0);
+    });
+
+    if (isOwner) {
+      expenses.forEach(exp => {
+        expensesTotal += exp.amount;
+      });
+    }
+
+    const finalAmount = revenue - expensesTotal;
+
+    let profitTaken = 0;
+    profitWithdrawals.forEach(p => {
+      profitTaken += p.amount;
+    });
+
+    const retainedEarnings = finalAmount - profitTaken;
+
+    return {
+      revenue,
+      expenses: expensesTotal,
+      shortage,
+      finalAmount,
+      profitTaken,
+      retainedEarnings,
+      stickSold,
+      potSold,
+      plateSold
+    };
+  }, [entries, expenses, specialOrders, profitWithdrawals, isOwner]);
+
+  // Active statistics based on timeframe selection (Monthly vs Lifetime)
+  const activeStats = useMemo(() => {
+    if (timeframe === 'lifetime') {
+      return {
+        revenue: lifetimeTotals.revenue,
+        expenses: lifetimeTotals.expenses,
+        shortage: lifetimeTotals.shortage,
+        finalAmount: lifetimeTotals.finalAmount,
+        profitTaken: lifetimeTotals.profitTaken,
+        retainedEarnings: lifetimeTotals.retainedEarnings,
+        stickSold: lifetimeTotals.stickSold,
+        potSold: lifetimeTotals.potSold,
+        plateSold: lifetimeTotals.plateSold
+      };
+    }
+    return {
+      revenue: monthlyTotals.revenue,
+      expenses: monthlyTotals.expenses,
+      shortage: monthlyTotals.shortage,
+      finalAmount: monthlyTotals.finalAmount,
+      profitTaken: monthlyProfitTaken,
+      retainedEarnings: monthlyRetainedEarnings,
+      stickSold: monthlyTotals.stickSold,
+      potSold: monthlyTotals.potSold,
+      plateSold: monthlyTotals.plateSold
+    };
+  }, [timeframe, lifetimeTotals, monthlyTotals, monthlyProfitTaken, monthlyRetainedEarnings]);
 
   
   const handleProfitSubmit = async () => {
@@ -270,25 +362,108 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       </div>
       )}
 
+      {/* Timeframe Switcher for Core Financial Metrics */}
+      <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+        isDark ? 'bg-slate-900/70 border-slate-800' : 'bg-slate-100/90 border-slate-200 shadow-sm'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className={`p-2.5 rounded-xl shrink-0 ${
+            timeframe === 'monthly'
+              ? isDark ? 'bg-cyan-500/20 text-cyan-400' : 'bg-cyan-100 text-cyan-800'
+              : isDark ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-100 text-indigo-800'
+          }`}>
+            <Coins className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                Financial Summary
+              </h3>
+              <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full ${
+                timeframe === 'monthly'
+                  ? isDark ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-cyan-100 text-cyan-800 border border-cyan-300'
+                  : isDark ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+              }`}>
+                {timeframe === 'monthly' ? `Monthly: ${format(currentDate, 'MMM yyyy')}` : 'Lifetime: All Time'}
+              </span>
+            </div>
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+              {timeframe === 'monthly'
+                ? `Showing data for ${format(currentDate, 'MMMM yyyy')} (use < > above to switch month)`
+                : 'Showing all-time cumulative figures across all recorded transactions'}
+            </p>
+          </div>
+        </div>
+
+        {/* Monthly / Lifetime Toggle Button Group */}
+        <div className="inline-flex p-1 rounded-xl bg-slate-200/90 dark:bg-slate-800/90 border border-slate-300/80 dark:border-slate-700 shadow-inner self-start sm:self-auto">
+          <button
+            type="button"
+            id="timeframe-monthly-btn"
+            onClick={() => setTimeframe('monthly')}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              timeframe === 'monthly'
+                ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            id="timeframe-lifetime-btn"
+            onClick={() => setTimeframe('lifetime')}
+            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+              timeframe === 'lifetime'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Lifetime
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         {isOwner && (
           <Card className={isDark ? 'bg-cyan-950/40 border-cyan-900/50' : 'bg-cyan-100/90 border-cyan-300 shadow-sm shadow-cyan-100/30'}>
             <CardContent className="p-5">
-              <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Revenue</p>
-              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.revenue)}</p>
+              <div className="flex justify-between items-start mb-2">
+                <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Revenue</p>
+                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  isDark ? 'bg-cyan-900/40 text-cyan-300' : 'bg-cyan-200/80 text-cyan-900'
+                }`}>
+                  {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+                </span>
+              </div>
+              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.revenue)}</p>
             </CardContent>
           </Card>
         )}
         <Card className={isDark ? 'bg-pink-950/40 border-pink-900/50' : 'bg-pink-100/90 border-pink-300 shadow-sm shadow-pink-100/30'}>
           <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-pink-400 font-bold' : 'text-pink-800 font-black'}`}>Total Expenses</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.expenses)}</p>
+            <div className="flex justify-between items-start mb-2">
+              <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-pink-400 font-bold' : 'text-pink-800 font-black'}`}>Total Expenses</p>
+              <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                isDark ? 'bg-pink-900/40 text-pink-300' : 'bg-pink-200/80 text-pink-900'
+              }`}>
+                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+              </span>
+            </div>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.expenses)}</p>
           </CardContent>
         </Card>
         <Card className={isDark ? 'bg-purple-950/40 border-purple-900/50' : 'bg-purple-100/90 border-purple-300 shadow-sm shadow-purple-100/30'}>
           <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Shortage</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.shortage)}</p>
+            <div className="flex justify-between items-start mb-2">
+              <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Shortage</p>
+              <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                isDark ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-200/80 text-purple-900'
+              }`}>
+                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+              </span>
+            </div>
+            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.shortage)}</p>
           </CardContent>
         </Card>
         
@@ -296,34 +471,54 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
           <>
             <Card className={isDark ? 'bg-emerald-950/40 border-emerald-900/50' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
               <CardContent className="p-5">
-                <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
-                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(totals.finalAmount)}</p>
+                <div className="flex justify-between items-start mb-2">
+                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                    isDark ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-200/80 text-emerald-900'
+                  }`}>
+                    {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.finalAmount)}</p>
               </CardContent>
             </Card>
             
             <Card className={isDark ? 'bg-fuchsia-950/40 border-fuchsia-900/50 relative overflow-hidden' : 'bg-fuchsia-100/90 border-fuchsia-300 shadow-sm shadow-fuchsia-100/30 relative overflow-hidden'}>
               <CardContent className="p-5">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>Profit Taken</p>
-                    <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(profitTaken)}</p>
+                <div className="flex justify-between items-start mb-2">
+                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>Profit Taken</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                      isDark ? 'bg-fuchsia-900/40 text-fuchsia-300' : 'bg-fuchsia-200/80 text-fuchsia-900'
+                    }`}>
+                      {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+                    </span>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className={`h-7 w-7 rounded-full cursor-pointer ${isDark ? 'bg-fuchsia-900/50 border-fuchsia-700/50 hover:bg-fuchsia-800/50 text-fuchsia-300' : 'bg-fuchsia-200 border-fuchsia-300 hover:bg-fuchsia-300 text-fuchsia-900'}`}
+                      onClick={() => setShowProfitModal(true)}
+                      title="Add Profit Withdrawal"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className={`h-8 w-8 rounded-full ${isDark ? 'bg-fuchsia-900/50 border-fuchsia-700/50 hover:bg-fuchsia-800/50 text-fuchsia-300' : 'bg-fuchsia-200 border-fuchsia-300 hover:bg-fuchsia-300 text-fuchsia-900'}`}
-                    onClick={() => setShowProfitModal(true)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
                 </div>
+                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.profitTaken)}</p>
               </CardContent>
             </Card>
 
             <Card className={isDark ? 'bg-indigo-950/40 border-indigo-900/50' : 'bg-indigo-100/90 border-indigo-300 shadow-sm shadow-indigo-100/30'}>
               <CardContent className="p-5">
-                <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>Retained Earnings</p>
-                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(retainedEarnings)}</p>
+                <div className="flex justify-between items-start mb-2">
+                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>Retained Earnings</p>
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                    isDark ? 'bg-indigo-900/40 text-indigo-300' : 'bg-indigo-200/80 text-indigo-900'
+                  }`}>
+                    {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.retainedEarnings)}</p>
               </CardContent>
             </Card>
           </>
@@ -334,17 +529,23 @@ const [viewEntry, setViewEntry] = useState<any | null>(null);
       <Card className={isDark ? 'bg-slate-900/40 border-slate-850/60' : 'bg-slate-50 border-slate-200 shadow-inner'}>
         <CardContent className="p-5 flex flex-wrap gap-6 divide-x divide-slate-200/80 dark:divide-slate-800/40">
           <div>
-            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Stick Sold</p>
-            <p className="text-xl font-black text-slate-950 dark:text-white">{totals.stickSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>
+              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Stick Sold
+            </p>
+            <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.stickSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
           </div>
           <div className="pl-4">
-            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Pot Sold</p>
-            <p className="text-xl font-black text-slate-950 dark:text-white">{totals.potSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+            <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>
+              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Pot Sold
+            </p>
+            <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.potSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
           </div>
-          {(settings?.enablePlate !== false || totals.plateSold > 0) && (
+          {(settings?.enablePlate !== false || activeStats.plateSold > 0) && (
             <div className="pl-4">
-              <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-amber-500 font-bold' : 'text-amber-800 font-black'}`}>Total Plate Sold</p>
-              <p className="text-xl font-black text-slate-950 dark:text-white">{totals.plateSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
+              <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-amber-500 font-bold' : 'text-amber-800 font-black'}`}>
+                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Plate Sold
+              </p>
+              <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.plateSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
             </div>
           )}
         </CardContent>

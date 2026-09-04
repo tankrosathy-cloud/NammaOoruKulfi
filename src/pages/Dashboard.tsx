@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders, useProfitWithdrawals } from '../store';
+import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X, MessageCircle } from 'lucide-react';
@@ -43,8 +43,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
   const { expenses, loading: expensesLoading } = useExpenses();
   const { specialOrders } = useSpecialOrders();
   const { inventory, loading: inventoryLoading } = useInventory();
-  const { profitWithdrawals, loading: profitLoading } = useProfitWithdrawals();
-  const loading = entriesLoading || expensesLoading || inventoryLoading || profitLoading;
+  const loading = entriesLoading || expensesLoading || inventoryLoading;
   const { settings } = useSettings();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -229,44 +228,6 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
     return { ...result, multiplier: Math.round(result.multiplier * 100) };
   }, [entries, isWeekend, isHoliday, weatherCondition, tomorrowStr]);
 
-  const overallStats = useMemo(() => {
-    let revenue = 0;
-    let totalExpenses = 0;
-    let shortage = 0;
-
-    entries.forEach(e => {
-      const netSales = Math.max(0, e.actualAmount - (e.cashBagLoaded || 0) + (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0));
-      const exp = (e.expenses || 0) + (e.additionalExpenses || 0) + (e.bonus || 0);
-      revenue += netSales;
-      totalExpenses += exp;
-      shortage += (e.shortage || 0);
-    });
-
-    specialOrders.forEach(order => {
-      revenue += order.amountReceived;
-    });
-
-    expenses.forEach(exp => {
-      totalExpenses += exp.amount;
-    });
-
-    const netSavings = revenue - totalExpenses;
-
-    let profitTaken = 0;
-    profitWithdrawals.forEach(p => {
-      profitTaken += p.amount;
-    });
-
-    const retainedEarnings = netSavings - profitTaken;
-
-    return {
-      shortage,
-      netSavings,
-      profitTaken,
-      retainedEarnings
-    };
-  }, [entries, expenses, specialOrders, profitWithdrawals]);
-
   if (loading) {
     return (
       <div className={`p-6 text-center font-bold uppercase tracking-wider ${
@@ -338,37 +299,6 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
             </div>
           </div>
         )}
-      </motion.div>
-
-      {/* OVERALL METRICS GRID */}
-      <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
-        <Card className={isDark ? 'bg-purple-950/20 border-purple-900/30' : 'bg-purple-100/90 border-purple-300 shadow-sm shadow-purple-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Shortage</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.shortage)}</p>
-          </CardContent>
-        </Card>
-        
-        <Card className={isDark ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.netSavings)}</p>
-          </CardContent>
-        </Card>
-
-        <Card className={isDark ? 'bg-fuchsia-950/20 border-fuchsia-900/30' : 'bg-fuchsia-100/90 border-fuchsia-300 shadow-sm shadow-fuchsia-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>Profit Taken</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.profitTaken)}</p>
-          </CardContent>
-        </Card>
-
-        <Card className={isDark ? 'bg-indigo-950/20 border-indigo-900/30' : 'bg-indigo-100/90 border-indigo-300 shadow-sm shadow-indigo-100/30'}>
-          <CardContent className="p-5">
-            <p className={`text-[10px] uppercase tracking-widest mb-2 ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>Retained Earnings</p>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(overallStats.retainedEarnings)}</p>
-          </CardContent>
-        </Card>
       </motion.div>
 
       {latest && (
