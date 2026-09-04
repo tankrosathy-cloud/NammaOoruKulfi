@@ -324,23 +324,44 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               {latest.shortage ? (
-                <div className="text-left sm:text-right mr-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-500">Shortage</span>
-                  <p className="text-xs font-black text-orange-500">{formatCurrency(latest.shortage)}</p>
+                <div className="text-left sm:text-right mr-1">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
+                    ⚠️ Shortage: {formatCurrency(latest.shortage)}
+                  </span>
                 </div>
               ) : latest.excess ? (
-                <div className="text-left sm:text-right mr-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-500">Excess</span>
-                  <p className="text-xs font-black text-emerald-500">{formatCurrency(latest.excess)}</p>
+                <div className="text-left sm:text-right mr-1">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                    ✨ Excess: +{formatCurrency(latest.excess)}
+                  </span>
                 </div>
-              ) : null}
+              ) : (
+                <div className="text-left sm:text-right mr-1">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    ✅ Cash Matched
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                id="dashboard-whatsapp-share-btn"
+                onClick={() => setShowWhatsAppModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wider transition-all shadow-sm shadow-emerald-600/20 cursor-pointer flex items-center gap-1.5 active:scale-95"
+                title="Share daily closing summary on WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>WhatsApp</span>
+              </button>
+
               {onNavigateToEntry && (
                 <button
                   type="button"
+                  id="dashboard-view-entry-btn"
                   onClick={() => onNavigateToEntry(latest.date)}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white text-[11px] font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-[11px] font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
                 >
                   View / Edit
                 </button>

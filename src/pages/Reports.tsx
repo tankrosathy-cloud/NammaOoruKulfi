@@ -72,6 +72,21 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   const [viewEntry, setViewEntry] = useState<any | null>(null);
   const [activeListTab, setActiveListTab] = useState<string>('entries');
   const [timeframe, setTimeframe] = useState<'monthly' | 'lifetime'>('monthly');
+  const [showTamil, setShowTamil] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('namma_tamil_labels');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return true;
+  });
+
+  const toggleTamil = () => {
+    setShowTamil(prev => {
+      const next = !prev;
+      try { localStorage.setItem('namma_tamil_labels', String(next)); } catch {}
+      return next;
+    });
+  };
 
   const { filteredEntries, filteredExpenses, filteredProfits, filteredSpecials, chartData, monthlyTotals, monthlyProfitTaken, monthlyRetainedEarnings } = useMemo(() => {
     const filteredExps = expenses.filter(e => isDateInMonth(e.date, currentDate)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -395,98 +410,170 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
           </div>
         </div>
 
-        {/* Monthly / Lifetime Toggle Button Group */}
-        <div className="inline-flex p-1 rounded-xl bg-slate-200/90 dark:bg-slate-800/90 border border-slate-300/80 dark:border-slate-700 shadow-inner self-start sm:self-auto">
+        {/* Controls: Tamil toggle and Monthly/Lifetime Switcher */}
+        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <button
             type="button"
-            id="timeframe-monthly-btn"
-            onClick={() => setTimeframe('monthly')}
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              timeframe === 'monthly'
-                ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            id="toggle-tamil-subtitles-btn"
+            onClick={toggleTamil}
+            className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+              showTamil
+                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-sm'
+                : 'bg-slate-200/90 dark:bg-slate-800 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border border-slate-300/80 dark:border-slate-700'
             }`}
+            title="Toggle Tamil bilingual subtitle hints"
           >
-            Monthly
+            <span>🌐 {showTamil ? 'தமிழ் ON' : 'தமிழ் OFF'}</span>
           </button>
-          <button
-            type="button"
-            id="timeframe-lifetime-btn"
-            onClick={() => setTimeframe('lifetime')}
-            className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-              timeframe === 'lifetime'
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Lifetime
-          </button>
+
+          {/* Monthly / Lifetime Toggle Button Group */}
+          <div className="inline-flex p-1 rounded-xl bg-slate-200/90 dark:bg-slate-800/90 border border-slate-300/80 dark:border-slate-700 shadow-inner">
+            <button
+              type="button"
+              id="timeframe-monthly-btn"
+              onClick={() => setTimeframe('monthly')}
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                timeframe === 'monthly'
+                  ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              id="timeframe-lifetime-btn"
+              onClick={() => setTimeframe('lifetime')}
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                timeframe === 'lifetime'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Lifetime
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {isOwner && (
-          <Card className={isDark ? 'bg-cyan-950/40 border-cyan-900/50' : 'bg-cyan-100/90 border-cyan-300 shadow-sm shadow-cyan-100/30'}>
-            <CardContent className="p-5">
-              <div className="flex justify-between items-start mb-2">
-                <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>Total Revenue</p>
-                <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                  isDark ? 'bg-cyan-900/40 text-cyan-300' : 'bg-cyan-200/80 text-cyan-900'
-                }`}>
-                  {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
-                </span>
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Total Revenue: Visible to all (Owner & Staff) */}
+        <Card className={isDark ? 'bg-cyan-950/40 border-cyan-900/50' : 'bg-cyan-100/90 border-cyan-300 shadow-sm shadow-cyan-100/30'}>
+          <CardContent className="p-5">
+            <div className="flex justify-between items-start mb-1">
+              <div>
+                <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>
+                  Total Revenue {showTamil && <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-300 ml-1">• மொத்த விற்பனை</span>}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Counter sales + special orders
+                </p>
               </div>
-              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.revenue)}</p>
-            </CardContent>
-          </Card>
-        )}
+              <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                isDark ? 'bg-cyan-900/40 text-cyan-300' : 'bg-cyan-200/80 text-cyan-900'
+              }`}>
+                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
+              </span>
+            </div>
+            <p className="text-2xl font-black text-slate-950 dark:text-white mt-2">{formatCurrency(activeStats.revenue)}</p>
+          </CardContent>
+        </Card>
+
+        {/* Total Expenses: Outflows */}
         <Card className={isDark ? 'bg-pink-950/40 border-pink-900/50' : 'bg-pink-100/90 border-pink-300 shadow-sm shadow-pink-100/30'}>
           <CardContent className="p-5">
-            <div className="flex justify-between items-start mb-2">
-              <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-pink-400 font-bold' : 'text-pink-800 font-black'}`}>Total Expenses</p>
+            <div className="flex justify-between items-start mb-1">
+              <div>
+                <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-pink-400 font-bold' : 'text-pink-800 font-black'}`}>
+                  Total Expenses {showTamil && <span className="text-[9px] font-bold text-pink-600 dark:text-pink-300 ml-1">• மொத்த செலவுகள்</span>}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Cart outflows & operating costs
+                </p>
+              </div>
               <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
                 isDark ? 'bg-pink-900/40 text-pink-300' : 'bg-pink-200/80 text-pink-900'
               }`}>
                 {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
               </span>
             </div>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.expenses)}</p>
+            <p className="text-2xl font-black text-slate-950 dark:text-white mt-2">{formatCurrency(activeStats.expenses)}</p>
           </CardContent>
         </Card>
+
+        {/* Total Shortage / Cash Drawer Tally */}
         <Card className={isDark ? 'bg-purple-950/40 border-purple-900/50' : 'bg-purple-100/90 border-purple-300 shadow-sm shadow-purple-100/30'}>
           <CardContent className="p-5">
-            <div className="flex justify-between items-start mb-2">
-              <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>Total Shortage</p>
+            <div className="flex justify-between items-start mb-1">
+              <div>
+                <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>
+                  Cash Shortage {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• பற்றாக்குறை</span>}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                  Drawer difference at closing
+                </p>
+              </div>
               <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
                 isDark ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-200/80 text-purple-900'
               }`}>
                 {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
               </span>
             </div>
-            <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.shortage)}</p>
+            <div className="flex items-baseline gap-2 mt-2">
+              <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.shortage)}</p>
+              {activeStats.shortage > 0 ? (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
+                  ⚠️ Short
+                </span>
+              ) : activeStats.shortage === 0 ? (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                  ✅ Matched
+                </span>
+              ) : (
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                  ✨ Surplus
+                </span>
+              )}
+            </div>
           </CardContent>
         </Card>
         
         {isOwner && (
           <>
+            {/* Net Savings: Revenue - Expenses */}
             <Card className={isDark ? 'bg-emerald-950/40 border-emerald-900/50' : 'bg-emerald-100/90 border-emerald-300 shadow-sm shadow-emerald-100/30'}>
               <CardContent className="p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>Net Savings</p>
+                <div className="flex justify-between items-start mb-1">
+                  <div>
+                    <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-emerald-400 font-bold' : 'text-emerald-800 font-black'}`}>
+                      Net Savings {showTamil && <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-300 ml-1">• நிகர சேமிப்பு</span>}
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      Revenue − All Expenses
+                    </p>
+                  </div>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
                     isDark ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-200/80 text-emerald-900'
                   }`}>
                     {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
                   </span>
                 </div>
-                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.finalAmount)}</p>
+                <p className="text-2xl font-black text-slate-950 dark:text-white mt-2">{formatCurrency(activeStats.finalAmount)}</p>
               </CardContent>
             </Card>
             
+            {/* Profit Taken */}
             <Card className={isDark ? 'bg-fuchsia-950/40 border-fuchsia-900/50 relative overflow-hidden' : 'bg-fuchsia-100/90 border-fuchsia-300 shadow-sm shadow-fuchsia-100/30 relative overflow-hidden'}>
               <CardContent className="p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>Profit Taken</p>
+                <div className="flex justify-between items-start mb-1">
+                  <div>
+                    <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-fuchsia-400 font-bold' : 'text-fuchsia-800 font-black'}`}>
+                      Profit Taken {showTamil && <span className="text-[9px] font-bold text-fuchsia-600 dark:text-fuchsia-300 ml-1">• எடுத்த லாபம்</span>}
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      Partner bank withdrawals
+                    </p>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
                       isDark ? 'bg-fuchsia-900/40 text-fuchsia-300' : 'bg-fuchsia-200/80 text-fuchsia-900'
@@ -504,21 +591,29 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                     </Button>
                   </div>
                 </div>
-                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.profitTaken)}</p>
+                <p className="text-2xl font-black text-slate-950 dark:text-white mt-2">{formatCurrency(activeStats.profitTaken)}</p>
               </CardContent>
             </Card>
 
+            {/* Retained Earnings */}
             <Card className={isDark ? 'bg-indigo-950/40 border-indigo-900/50' : 'bg-indigo-100/90 border-indigo-300 shadow-sm shadow-indigo-100/30'}>
               <CardContent className="p-5">
-                <div className="flex justify-between items-start mb-2">
-                  <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>Retained Earnings</p>
+                <div className="flex justify-between items-start mb-1">
+                  <div>
+                    <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-indigo-400 font-bold' : 'text-indigo-800 font-black'}`}>
+                      Retained Earnings {showTamil && <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 ml-1">• நிகர கையிருப்பு</span>}
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                      Net Reserve (Savings − Profit)
+                    </p>
+                  </div>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
                     isDark ? 'bg-indigo-900/40 text-indigo-300' : 'bg-indigo-200/80 text-indigo-900'
                   }`}>
                     {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'}
                   </span>
                 </div>
-                <p className="text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.retainedEarnings)}</p>
+                <p className="text-2xl font-black text-slate-950 dark:text-white mt-2">{formatCurrency(activeStats.retainedEarnings)}</p>
               </CardContent>
             </Card>
           </>
@@ -530,20 +625,20 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
         <CardContent className="p-5 flex flex-wrap gap-6 divide-x divide-slate-200/80 dark:divide-slate-800/40">
           <div>
             <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-cyan-400 font-bold' : 'text-cyan-800 font-black'}`}>
-              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Stick Sold
+              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Stick Sold {showTamil && <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-300 ml-1">• குச்சி</span>}
             </p>
             <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.stickSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
           </div>
           <div className="pl-4">
             <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>
-              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Pot Sold
+              {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Pot Sold {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• மட்கா</span>}
             </p>
             <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.potSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
           </div>
           {(settings?.enablePlate !== false || activeStats.plateSold > 0) && (
             <div className="pl-4">
               <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${isDark ? 'text-amber-500 font-bold' : 'text-amber-800 font-black'}`}>
-                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Plate Sold
+                {timeframe === 'monthly' ? 'Monthly' : 'Lifetime'} Plate Sold {showTamil && <span className="text-[9px] font-bold text-amber-600 dark:text-amber-300 ml-1">• தட்டு</span>}
               </p>
               <p className="text-xl font-black text-slate-950 dark:text-white">{activeStats.plateSold} <span className="text-xs font-extrabold text-slate-500 uppercase tracking-widest">pcs</span></p>
             </div>
@@ -665,6 +760,19 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white">{format(parseISO(entry.date), 'dd MMM yyyy')}</span>
+                        {entry.shortage && entry.shortage > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
+                            ⚠️ Short ₹{entry.shortage}
+                          </span>
+                        ) : entry.excess && entry.excess > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                            ✨ Excess +₹{entry.excess}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            ✅ Tally Matched
+                          </span>
+                        )}
                         {(() => {
                           const denoms = getEntryDenominations(entry, dailyDenominationsMap);
                           const total = getDenomTotal(denoms);
@@ -680,10 +788,15 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                         })()}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3">
-                        {isOwner && (
+                        {isOwner ? (
                           <div>
-                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rev</p>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Revenue</p>
                              <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(Math.max(0, entry.actualAmount - (entry.cashBagLoaded || 0) + (entry.expenses || 0) + (entry.additionalExpenses || 0) + (entry.bonus || 0)))}</p>
+                          </div>
+                        ) : (
+                          <div>
+                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Handover Cash</p>
+                             <p className="font-black text-sm text-cyan-600 dark:text-cyan-400">{formatCurrency(entry.finalAmount || entry.actualAmount || 0)}</p>
                           </div>
                         )}
                         <div>
@@ -1121,8 +1234,24 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                         <p className={`font-black text-sm ${isDark ? 'text-white' : 'text-slate-800'}`}>{formatCurrency(viewEntry.phonePe)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Shortage</p>
-                        <p className={`font-black text-sm ${viewEntry.shortage > 0 ? 'text-pink-500' : isDark ? 'text-white' : 'text-slate-800'}`}>{formatCurrency(viewEntry.shortage)}</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                          <span>Shortage</span>
+                          {showTamil && <span className="text-[9px] text-slate-400">• பற்றாக்குறை</span>}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className={`font-black text-sm ${viewEntry.shortage > 0 ? 'text-rose-500' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                            {formatCurrency(viewEntry.shortage || 0)}
+                          </p>
+                          {viewEntry.shortage > 0 ? (
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
+                              ⚠️ Short
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                              ✅ Matched
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash Bag Loaded</p>

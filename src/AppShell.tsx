@@ -23,12 +23,31 @@ function AppShellContent() {
   const { profile, franchise, switchFranchise } = useFranchise();
   const userEmail = auth.currentUser?.email || '';
   const username = userEmail.split('@')[0].toLowerCase();
-  const role = profile?.role === 'superadmin' ? 'superadmin' : ((profile?.role === 'owner' || profile?.role === 'manager') ? 'owner' : 'staff');
-  const navRole = (role === 'superadmin' && franchise) ? 'owner' : role;
+  const baseRole = profile?.role === 'superadmin' ? 'superadmin' : ((profile?.role === 'owner' || profile?.role === 'manager') ? 'owner' : 'staff');
+
+  // Role-Based Interface Mode: Allows owners to toggle into clean Staff Mode
+  const [viewMode, setViewMode] = useState<'owner' | 'staff'>(() => {
+    try {
+      const saved = localStorage.getItem('namma_view_mode');
+      if (saved === 'owner' || saved === 'staff') return saved;
+    } catch {}
+    return 'owner';
+  });
+
+  const toggleViewMode = (mode: 'owner' | 'staff') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('namma_view_mode', mode);
+    } catch {}
+  };
+
+  // If actual account is staff, force staff mode. Otherwise follow user's chosen viewMode.
+  const effectiveRole: 'owner' | 'staff' = (baseRole === 'staff') ? 'staff' : viewMode;
+  const navRole = (baseRole === 'superadmin' && !franchise) ? 'superadmin' : effectiveRole;
+
   useEffect(() => {
-    setCurrentUserRole(role === 'owner' ? 'owner' : 'staff');
-    
-  }, [role]);
+    setCurrentUserRole(effectiveRole);
+  }, [effectiveRole]);
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(() => {
     try {
@@ -38,7 +57,7 @@ function AppShellContent() {
         sessionStorage.removeItem('namma_active_tab');
         localStorage.removeItem('namma_active_tab');
         sessionStorage.removeItem('namma_edit_date');
-        return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
       }
 
       const lastUser = sessionStorage.getItem('namma_logged_user');
@@ -47,31 +66,31 @@ function AppShellContent() {
         sessionStorage.removeItem('namma_active_tab');
         localStorage.removeItem('namma_active_tab');
         sessionStorage.removeItem('namma_edit_date');
-        return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
       }
 
       const saved = sessionStorage.getItem('namma_active_tab');
       const validTabs = ['dashboard', 'add', 'expense', 'reports', 'settings', 'logs', 'superadmin'];
       if (saved && validTabs.includes(saved)) {
-        if (role === 'staff') {
+        if (effectiveRole === 'staff') {
           if (saved === 'settings' || saved === 'logs' || saved === 'superadmin' || saved === 'dashboard' || saved === 'expense') {
             return 'reports';
           }
         }
-        if (saved === 'superadmin' && role !== 'superadmin') {
-          return role === 'owner' ? 'dashboard' : 'reports';
+        if (saved === 'superadmin' && baseRole !== 'superadmin') {
+          return effectiveRole === 'owner' ? 'dashboard' : 'reports';
         }
         return saved as any;
       }
     } catch {}
-    return role === 'superadmin' ? 'superadmin' : (role === 'owner' ? 'dashboard' : 'reports');
+    return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
   });
 
   useEffect(() => {
-    if (role === 'staff' && (activeTab === 'dashboard' || activeTab === 'expense' || activeTab === 'logs' || activeTab === 'superadmin')) {
+    if (effectiveRole === 'staff' && (activeTab === 'dashboard' || activeTab === 'expense' || activeTab === 'logs' || activeTab === 'superadmin')) {
       setActiveTab('reports');
     }
-  }, [role, activeTab]);
+  }, [effectiveRole, activeTab]);
 
   useEffect(() => {
     try {
@@ -189,7 +208,58 @@ function AppShellContent() {
           </div>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-3">
-          {role === 'superadmin' && activeTab !== 'superadmin' && (
+          {/* Owner vs Staff Mode Switcher for Owners/Managers */}
+          {baseRole !== 'staff' && (
+            <div className="flex items-center">
+              <div className="hidden sm:inline-flex p-0.5 rounded-xl bg-slate-200/90 dark:bg-slate-800/90 border border-slate-300/80 dark:border-slate-700 shadow-inner">
+                <button
+                  type="button"
+                  id="viewmode-owner-toggle"
+                  onClick={() => toggleViewMode('owner')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                    effectiveRole === 'owner'
+                      ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Owner Mode: Full financial controls & profit withdrawals"
+                >
+                  👔 Owner
+                </button>
+                <button
+                  type="button"
+                  id="viewmode-staff-toggle"
+                  onClick={() => toggleViewMode('staff')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                    effectiveRole === 'staff'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                  title="Staff Mode: Clean counter interface (sensitive profit & margins hidden)"
+                >
+                  🧑‍🍳 Staff
+                </button>
+              </div>
+
+              {/* Mobile View Mode Button */}
+              <button
+                type="button"
+                id="viewmode-mobile-toggle"
+                onClick={() => toggleViewMode(effectiveRole === 'owner' ? 'staff' : 'owner')}
+                className={`sm:hidden p-1.5 px-2 rounded-lg border font-black text-[10px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors ${
+                  effectiveRole === 'staff'
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 shadow-sm'
+                    : isDark 
+                      ? 'border-slate-800 text-cyan-400 bg-slate-900/40' 
+                      : 'border-slate-300 text-cyan-700 bg-white shadow-sm'
+                }`}
+                title={`Currently in ${effectiveRole === 'owner' ? 'Owner' : 'Staff'} Mode. Tap to switch.`}
+              >
+                {effectiveRole === 'owner' ? '👔 Owner' : '🧑‍🍳 Staff'}
+              </button>
+            </div>
+          )}
+
+          {baseRole === 'superadmin' && activeTab !== 'superadmin' && (
             <button 
               onClick={() => navigateTab('superadmin')}
               className={`transition-colors p-1.5 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-widest flex items-center gap-1 ${
@@ -232,7 +302,7 @@ function AppShellContent() {
           >
             {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
-          {role === 'superadmin' && (
+          {baseRole === 'superadmin' && (
           <NavItem 
             icon={<SettingsIcon className="w-5 h-5" />} 
             label="Admin" 
@@ -241,7 +311,7 @@ function AppShellContent() {
             isDark={isDark}
           />
         )}
-        {role === 'owner' && (
+        {navRole === 'owner' && (
             <button 
               onClick={() => navigateTab('logs')} 
               className={`transition-colors p-1.5 rounded-lg ${
@@ -268,6 +338,24 @@ function AppShellContent() {
           </button>
         </div>
       </header>
+
+      {/* Staff Mode Notice Banner for Owners Previewing Staff Experience */}
+      {baseRole !== 'staff' && effectiveRole === 'staff' && (
+        <div className="bg-emerald-500/15 border-b border-emerald-500/25 px-4 py-2 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between font-bold z-10 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🧑‍🍳</span>
+            <span><strong>Staff Counter Mode Active:</strong> Profit withdrawals, retained earnings, and admin controls are hidden.</span>
+          </div>
+          <button
+            type="button"
+            id="exit-staff-view-banner-btn"
+            onClick={() => toggleViewMode('owner')}
+            className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shrink-0 ml-3 shadow-sm active:scale-95"
+          >
+            Exit to Owner
+          </button>
+        </div>
+      )}
       
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {activeTab === 'dashboard' && navRole === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
@@ -276,7 +364,7 @@ function AppShellContent() {
         {activeTab === 'reports' && <Reports role={navRole as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
         {activeTab === 'settings' && <SettingsPage role={navRole as any} />}
         {activeTab === 'logs' && navRole === 'owner' && <HistoryLogs />}
-        {activeTab === 'superadmin' && role === 'superadmin' && <SuperAdmin onNavigate={(tab) => navigateTab(tab as any)} />}
+        {activeTab === 'superadmin' && baseRole === 'superadmin' && <SuperAdmin onNavigate={(tab) => navigateTab(tab as any)} />}
       </main>
 
       <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-20 transition-all duration-300 border-t ${
@@ -284,7 +372,7 @@ function AppShellContent() {
           ? 'bg-[#111827]/95 border-slate-800 backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' 
           : 'bg-white border-slate-300 shadow-[0_-4px_24px_rgba(15,23,42,0.1)]'
       }`}>
-        {role === 'superadmin' && (
+        {baseRole === 'superadmin' && !franchise && (
           <NavItem 
             icon={<Shield className="w-5 h-5" />} 
             label="S-Admin" 
@@ -327,7 +415,7 @@ function AppShellContent() {
         />}
         {navRole !== 'superadmin' && <NavItem 
           icon={navRole === 'owner' ? <SettingsIcon className="w-5 h-5" /> : <Package className="w-5 h-5" />} 
-          label={navRole === 'owner' ? "Admin" : "Inv"} 
+          label={navRole === 'owner' ? "Admin" : "Stock"} 
           active={activeTab === 'settings'} 
           onClick={() => navigateTab('settings')} 
           isDark={isDark}
