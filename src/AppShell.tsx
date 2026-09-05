@@ -15,6 +15,7 @@ import { useFranchise } from './context/FranchiseContext';
 import { motion } from 'motion/react';
 import SyncStatus from './components/SyncStatus';
 import SuperAdmin from './pages/SuperAdmin';
+import { isDateInMonth } from './lib/utils';
 
 function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
@@ -152,6 +153,9 @@ function AppShellContent() {
   };
   
   const handleEditEntry = (date: string) => {
+    if (navRole !== 'owner' && !isDateInMonth(date, new Date())) {
+      return;
+    }
     setEditDate(date);
     setActiveTab('add');
   };
@@ -189,28 +193,28 @@ function AppShellContent() {
     <div className={`flex flex-col h-screen font-sans overflow-hidden transition-colors duration-300 ${
       isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
     }`}>
-      <header className={`px-4 sm:px-6 py-4 sm:py-5 sticky top-0 z-10 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
+      <header className={`px-2.5 sm:px-6 py-2.5 sm:py-5 sticky top-0 z-10 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
         isDark 
           ? 'bg-[#0B0F19]/90 border-slate-800/60' 
           : 'bg-white border-slate-300 shadow-md shadow-slate-100'
       }`}>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Logo className={`w-8 h-8 sm:w-10 sm:h-10 transition-all ${
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 shrink">
+          <Logo className={`w-7 h-7 sm:w-10 sm:h-10 shrink-0 transition-all ${
             isDark ? 'shadow-lg shadow-cyan-500/20' : 'shadow-md shadow-cyan-500/10'
           }`} />
-          <div className="flex flex-col">
-            <span className={`text-[8px] sm:text-[10px] font-bold tracking-[0.15em] sm:tracking-[0.2em] uppercase mb-0.5 sm:mb-1 ${
+          <div className="flex flex-col min-w-0">
+            <span className={`text-[7px] sm:text-[10px] font-bold tracking-wider uppercase truncate leading-none mb-0.5 ${
               isDark ? 'text-cyan-400' : 'text-cyan-600'
             }`}>{franchise?.name || 'Franchise'}</span>
-            <h1 className={`text-lg sm:text-2xl font-black tracking-tighter leading-none uppercase ${
+            <h1 className={`text-xs xs:text-sm sm:text-2xl font-black tracking-tight leading-none uppercase truncate ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}>Namma Ooru <span className="text-pink-500">Kulfi</span></h1>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-3">
+        <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
           {/* Owner vs Staff Mode Switcher for Owners/Managers */}
           {baseRole !== 'staff' && (
-            <div className="flex items-center">
+            <div className="flex items-center shrink-0">
               <div className="hidden sm:inline-flex p-0.5 rounded-xl bg-slate-200/90 dark:bg-slate-800/90 border border-slate-300/80 dark:border-slate-700 shadow-inner">
                 <button
                   type="button"
@@ -245,7 +249,7 @@ function AppShellContent() {
                 type="button"
                 id="viewmode-mobile-toggle"
                 onClick={() => toggleViewMode(effectiveRole === 'owner' ? 'staff' : 'owner')}
-                className={`sm:hidden p-1.5 px-2 rounded-lg border font-black text-[10px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors ${
+                className={`sm:hidden h-7 px-1.5 rounded-lg border font-black text-[9px] uppercase tracking-wider flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 transition-colors ${
                   effectiveRole === 'staff'
                     ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 shadow-sm'
                     : isDark 
@@ -254,7 +258,8 @@ function AppShellContent() {
                 }`}
                 title={`Currently in ${effectiveRole === 'owner' ? 'Owner' : 'Staff'} Mode. Tap to switch.`}
               >
-                {effectiveRole === 'owner' ? '👔 Owner' : '🧑‍🍳 Staff'}
+                <span>{effectiveRole === 'owner' ? '👔' : '🧑‍🍳'}</span>
+                <span>{effectiveRole === 'owner' ? 'Owner' : 'Staff'}</span>
               </button>
             </div>
           )}
@@ -262,21 +267,23 @@ function AppShellContent() {
           {baseRole === 'superadmin' && activeTab !== 'superadmin' && (
             <button 
               onClick={() => navigateTab('superadmin')}
-              className={`transition-colors p-1.5 px-3 rounded-lg border font-bold text-[10px] uppercase tracking-widest flex items-center gap-1 ${
+              className={`transition-colors h-7 sm:h-auto p-1 sm:p-1.5 px-2 sm:px-3 rounded-lg border font-bold text-[9px] sm:text-[10px] uppercase tracking-widest flex items-center gap-1 shrink-0 ${
                 isDark 
                   ? 'border-cyan-800 text-cyan-400 bg-cyan-950/30 hover:bg-cyan-900/50' 
                   : 'border-cyan-300 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 shadow-sm'
               }`}
             >
-              <Shield className="w-3.5 h-3.5" /> Exit
+              <Shield className="w-3.5 h-3.5" /> <span className="hidden xs:inline">Exit</span>
             </button>
           )}
+
           <SyncStatus />
+
           <button 
             id="refresh-page-btn"
             onClick={handleRefreshPage} 
             disabled={isRefreshing}
-            className={`transition-all duration-200 p-1.5 px-2 sm:px-2.5 rounded-lg border flex items-center gap-1.5 cursor-pointer select-none active:scale-95 ${
+            className={`transition-all duration-200 h-7 sm:h-auto w-7 sm:w-auto p-1.5 sm:px-2.5 rounded-lg border flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 shrink-0 ${
               isRefreshing
                 ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-sm shadow-cyan-500/20'
                 : isDark 
@@ -291,50 +298,58 @@ function AppShellContent() {
               {isRefreshing ? 'Reloading...' : 'Refresh'}
             </span>
           </button>
+
           <button 
             onClick={toggleTheme} 
-            className={`transition-colors p-1.5 rounded-lg border ${
+            className={`transition-colors h-7 w-7 sm:h-auto sm:w-auto p-1.5 sm:p-2 rounded-lg border flex items-center justify-center shrink-0 ${
               isDark 
                 ? 'border-slate-800 text-cyan-400 hover:text-cyan-300 hover:bg-slate-900/50' 
                 : 'border-slate-300 text-pink-600 hover:text-pink-700 hover:bg-slate-100 bg-white shadow-sm'
             }`}
             title={isDark ? "Day Mode" : "Night Mode"}
           >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {isDark ? <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
+
           {baseRole === 'superadmin' && (
-          <NavItem 
-            icon={<SettingsIcon className="w-5 h-5" />} 
-            label="Admin" 
-            active={activeTab === 'superadmin'} 
-            onClick={() => navigateTab('superadmin')} 
-            isDark={isDark}
-          />
-        )}
-        {navRole === 'owner' && (
+            <NavItem 
+              icon={<SettingsIcon className="w-5 h-5" />} 
+              label="Admin" 
+              active={activeTab === 'superadmin'} 
+              onClick={() => navigateTab('superadmin')} 
+              isDark={isDark}
+            />
+          )}
+
+          {navRole === 'owner' && (
             <button 
+              id="header-logs-btn"
               onClick={() => navigateTab('logs')} 
-              className={`transition-colors p-1.5 rounded-lg ${
+              className={`transition-colors h-7 w-7 sm:h-auto sm:w-auto p-1.5 sm:p-2 rounded-lg border flex items-center justify-center shrink-0 ${
                 activeTab === 'logs' 
-                  ? 'text-cyan-400 bg-cyan-950/20' 
+                  ? 'border-cyan-500/40 text-cyan-400 bg-cyan-950/30' 
                   : isDark 
-                    ? 'text-slate-400 hover:text-white hover:bg-slate-900/50' 
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    ? 'border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900/50' 
+                    : 'border-slate-300 text-slate-500 hover:text-slate-800 hover:bg-slate-100 bg-white shadow-sm'
               }`}
+              title="Activity Logs & History"
             >
-              <History className="w-4.5 h-4.5" />
+              <History className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
+
           <button 
+            id="header-logout-btn"
             onClick={handleLogout} 
-            className={`transition-colors p-1.5 rounded-lg ${
+            className={`transition-colors h-7 w-7 sm:h-auto sm:w-auto p-1.5 sm:p-2 rounded-lg border flex items-center justify-center shrink-0 ${
               isDark 
-                ? 'text-slate-400 hover:text-white hover:bg-slate-900/50' 
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                ? 'border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-950/20' 
+                : 'border-slate-300 text-slate-500 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 bg-white shadow-sm'
             }`}
             title="Log Out"
+            aria-label="Log Out"
           >
-            <LogOut className="w-4.5 h-4.5" />
+            <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </header>
@@ -359,7 +374,7 @@ function AppShellContent() {
       
       <main className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
         {activeTab === 'dashboard' && navRole === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
-        {activeTab === 'add' && <AddEntry onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
+        {activeTab === 'add' && <AddEntry role={navRole as any} onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && navRole === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={navRole as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
         {activeTab === 'settings' && <SettingsPage role={navRole as any} />}

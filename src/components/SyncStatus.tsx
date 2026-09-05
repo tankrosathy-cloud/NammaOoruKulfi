@@ -109,7 +109,7 @@ export default function SyncStatus() {
       id="sync-status-button"
       onClick={handleForceSync}
       disabled={!isOnline || activeSyncing}
-      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-300 border cursor-pointer ${
+      className={`flex items-center justify-center gap-1.5 h-7 sm:h-auto px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all duration-300 border cursor-pointer shrink-0 ${
         !isOnline
           ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 animate-pulse'
           : activeSyncing

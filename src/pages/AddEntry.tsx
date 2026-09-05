@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
 import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, getDenomsStorageKey } from '../store';
 import { useFranchise } from '../context/FranchiseContext';
-import { format, subDays, parseISO } from 'date-fns';
+import { format, subDays, parseISO, startOfMonth, endOfMonth } from 'date-fns';
+import { isDateInMonth } from '../lib/utils';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
@@ -31,7 +32,19 @@ const numToInputStr = (val: number | string | undefined | null): string => {
   return val.toString();
 };
 
-export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: () => void, onCancel?: () => void, initialDate?: string, key?: string }) {
+export default function AddEntry({ 
+  role = 'owner',
+  onSave, 
+  onCancel, 
+  initialDate 
+}: { 
+  role?: 'owner' | 'manager' | 'staff',
+  onSave: () => void, 
+  onCancel?: () => void, 
+  initialDate?: string, 
+  key?: string 
+}) {
+  const isOwner = role === 'owner';
   const { profile } = useFranchise();
   const activeFid = profile?.franchiseId;
   const { settings } = useSettings();
@@ -40,7 +53,21 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
   const { specialOrders } = useSpecialOrders();
   const { dailyDenominationsMap } = useDailyDenominations();
   const [loading, setLoading] = useState(false);
-  const [date, setDate] = useState(initialDate || format(new Date(), 'yyyy-MM-dd'));
+
+  // If staff, restrict initial date to current month
+  const [date, setDate] = useState(() => {
+    if (initialDate) {
+      if (isOwner || isDateInMonth(initialDate, new Date())) {
+        return initialDate;
+      }
+    }
+    return format(new Date(), 'yyyy-MM-dd');
+  });
+
+  const minDate = !isOwner ? format(startOfMonth(new Date()), 'yyyy-MM-dd') : undefined;
+  const maxDate = !isOwner ? format(endOfMonth(new Date()), 'yyyy-MM-dd') : undefined;
+  const isYesterdayInCurrentMonth = isDateInMonth(format(subDays(new Date(), 1), 'yyyy-MM-dd'), new Date());
+
   const [entryId, setEntryId] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -296,6 +323,7 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
 
   useEffect(() => {
     if (!isDirtyRef.current) return;
+    if (!isOwner && !isDateInMonth(date, new Date())) return;
 
     setAutoSaveStatus('saving');
     const timer = setTimeout(async () => {
@@ -351,6 +379,10 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwner && !isDateInMonth(date, new Date())) {
+      alert("Staff cannot submit entries for previous months. Only current month data is allowed.");
+      return;
+    }
     setLoading(true);
 
     const matchingEntry = entries?.find(e => e.date === date);
@@ -509,7 +541,14 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
           <CardContent className="p-6 space-y-6">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
-                <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Date</Label>
+                <div className="flex items-center gap-2">
+                  <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Date</Label>
+                  {!isOwner && (
+                    <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                      Current Month Only
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -522,20 +561,36 @@ export default function AddEntry({ onSave, onCancel, initialDate }: { onSave: ()
                   >
                     Today
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setDate(format(subDays(new Date(), 1), 'yyyy-MM-dd'))}
-                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
-                      date === format(subDays(new Date(), 1), 'yyyy-MM-dd')
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                    }`}
-                  >
-                    Yesterday
-                  </button>
+                  {(isOwner || isYesterdayInCurrentMonth) && (
+                    <button
+                      type="button"
+                      onClick={() => setDate(format(subDays(new Date(), 1), 'yyyy-MM-dd'))}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
+                        date === format(subDays(new Date(), 1), 'yyyy-MM-dd')
+                          ? 'bg-cyan-500 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      Yesterday
+                    </button>
+                  )}
                 </div>
               </div>
-              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              <Input 
+                type="date" 
+                value={date} 
+                min={minDate}
+                max={maxDate}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (!isOwner && val && !isDateInMonth(val, new Date())) {
+                    alert("Staff are restricted to entering data for the current month only.");
+                    return;
+                  }
+                  setDate(val);
+                }} 
+                required 
+              />
             </div>
 
             <div className="space-y-6 pt-2">
