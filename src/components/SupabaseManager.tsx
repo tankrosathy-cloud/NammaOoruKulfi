@@ -33,6 +33,8 @@ import {
 } from '../lib/supabase';
 import { migrateAllDataToSupabase } from '../lib/supabaseService';
 import { useEntries, useExpenses, useSpecialOrders, useInventory, useSettings, useSync } from '../store';
+import { useFranchise } from '../context/FranchiseContext';
+import { auth } from '../lib/firebase';
 
 const SQL_SCHEMA_SNIPPET = `-- ===================================================================
 -- NAMMA OORU KULFI - SUPABASE POSTGRESQL DATABASE SCHEMA & MIGRATION
@@ -216,6 +218,9 @@ END $$;
 `;
 
 export default function SupabaseManager() {
+  const { profile } = useFranchise();
+  const isSuperAdmin = profile?.role === 'superadmin' || auth.currentUser?.email === 'superadmin@gmail.com';
+
   const { entries } = useEntries();
   const { expenses } = useExpenses();
   const { specialOrders } = useSpecialOrders();
@@ -346,6 +351,20 @@ export default function SupabaseManager() {
       setIsMigrating(false);
     }
   };
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="p-6 text-center bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+        <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+          Access Restricted
+        </h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Database configuration and management options are available only to Super Admin accounts.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" id="supabase-manager-card">

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
 import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, getDenomsStorageKey } from '../store';
 import { useFranchise } from '../context/FranchiseContext';
-import { format, subDays, parseISO, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, addDays, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { isDateInMonth } from '../lib/utils';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
@@ -54,10 +54,10 @@ export default function AddEntry({
   const { dailyDenominationsMap } = useDailyDenominations();
   const [loading, setLoading] = useState(false);
 
-  // If staff, restrict initial date to current month
+  // If staff, restrict initial date to current month (or tomorrow)
   const [date, setDate] = useState(() => {
     if (initialDate) {
-      if (isOwner || isDateInMonth(initialDate, new Date())) {
+      if (isOwner || isDateInMonth(initialDate, new Date()) || initialDate === format(addDays(new Date(), 1), 'yyyy-MM-dd')) {
         return initialDate;
       }
     }
@@ -65,7 +65,7 @@ export default function AddEntry({
   });
 
   const minDate = !isOwner ? format(startOfMonth(new Date()), 'yyyy-MM-dd') : undefined;
-  const maxDate = !isOwner ? format(endOfMonth(new Date()), 'yyyy-MM-dd') : undefined;
+  const maxDate = !isOwner ? format(endOfMonth(addDays(new Date(), 1)), 'yyyy-MM-dd') : undefined;
   const isYesterdayInCurrentMonth = isDateInMonth(format(subDays(new Date(), 1), 'yyyy-MM-dd'), new Date());
 
   const [entryId, setEntryId] = useState<string>('');
@@ -379,7 +379,8 @@ export default function AddEntry({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isOwner && !isDateInMonth(date, new Date())) {
+    const tomorrowCheckStr = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    if (!isOwner && !isDateInMonth(date, new Date()) && date !== tomorrowCheckStr) {
       alert("Staff cannot submit entries for previous months. Only current month data is allowed.");
       return;
     }
@@ -434,6 +435,7 @@ export default function AddEntry({
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const yesterdayStr = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+  const tomorrowStr = format(addDays(new Date(), 1), 'yyyy-MM-dd');
   const sortedEntries = useMemo(() => {
     return [...entries].sort((a, b) => b.date.localeCompare(a.date));
   }, [entries]);
@@ -456,33 +458,6 @@ export default function AddEntry({
           <p className="text-slate-700 dark:text-slate-400 text-[10px] font-extrabold uppercase tracking-widest mt-0.5">
             {isEditing ? `Viewing & Editing metrics for ${format(parseISO(date), 'dd MMM yyyy')}` : `Entering closing metrics for ${format(parseISO(date), 'dd MMM yyyy')}`}
           </p>
-        </div>
-
-        {/* Quick Date Switcher Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setDate(todayStr)}
-            className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all ${
-              date === todayStr
-                ? 'bg-cyan-500 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Today ({format(parseISO(todayStr), 'dd MMM')}) {entries.some(e => e.date === todayStr) ? '✓' : ''}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDate(yesterdayStr)}
-            className={`px-3 py-1.5 rounded-xl text-[11px] font-black tracking-wide transition-all ${
-              date === yesterdayStr
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Yesterday ({format(parseISO(yesterdayStr), 'dd MMM')}) {entries.some(e => e.date === yesterdayStr) ? '✓' : ''}
-          </button>
         </div>
       </div>
 
@@ -552,28 +527,37 @@ export default function AddEntry({
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setDate(format(new Date(), 'yyyy-MM-dd'))}
-                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
-                      date === format(new Date(), 'yyyy-MM-dd')
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                    onClick={() => setDate(todayStr)}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
+                      date === todayStr
+                        ? 'bg-cyan-500 text-white shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                     }`}
                   >
-                    Today
+                    Today {entries.some(e => e.date === todayStr) ? '✓' : ''}
                   </button>
-                  {(isOwner || isYesterdayInCurrentMonth) && (
-                    <button
-                      type="button"
-                      onClick={() => setDate(format(subDays(new Date(), 1), 'yyyy-MM-dd'))}
-                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors ${
-                        date === format(subDays(new Date(), 1), 'yyyy-MM-dd')
-                          ? 'bg-cyan-500 text-white'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-                      }`}
-                    >
-                      Yesterday
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDate(yesterdayStr)}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
+                      date === yesterdayStr
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    Yesterday {entries.some(e => e.date === yesterdayStr) ? '✓' : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDate(tomorrowStr)}
+                    className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer ${
+                      date === tomorrowStr
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    Tomorrow {entries.some(e => e.date === tomorrowStr) ? '✓' : ''}
+                  </button>
                 </div>
               </div>
               <Input 
@@ -583,7 +567,7 @@ export default function AddEntry({
                 max={maxDate}
                 onChange={e => {
                   const val = e.target.value;
-                  if (!isOwner && val && !isDateInMonth(val, new Date())) {
+                  if (!isOwner && val && !isDateInMonth(val, new Date()) && val !== tomorrowStr) {
                     alert("Staff are restricted to entering data for the current month only.");
                     return;
                   }
@@ -737,37 +721,50 @@ export default function AddEntry({
               </div>
             </div>
             
-            <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800/60 space-y-4 bg-slate-100/70 dark:bg-slate-900/80 border-x-0 border-b-0 -mx-6 px-6 pb-6 rounded-b-3xl mt-6">
-               <div className="flex justify-between text-sm items-center">
-                 <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Expected Sales</span>
-                 <span className="font-black text-lg text-slate-900 dark:text-white">₹{expectedSales - discount}</span>
-               </div>
-               <div className="flex justify-between text-sm items-center">
-                 <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Actual Sales <span className="text-slate-500 dark:text-slate-500 font-extrabold">(Excl. Loaded Cash)</span></span>
-                 <span className="font-black text-lg text-slate-900 dark:text-white">₹{actualAmount - cashBagLoaded + platformRent + additionalExpenses + bonus}</span>
-               </div>
-               <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200 dark:border-slate-800/60">
-                 <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Shortage</span>
-                 <span className={`font-black text-xl ${shortage > 0 ? 'text-pink-600' : 'text-emerald-600 dark:text-emerald-400'}`}>₹{shortage}</span>
-               </div>
-               {settings.enableStick !== false && (
-                 <div className="flex justify-between text-sm items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40">
-                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Stick Kulfi Sold</span>
-                   <span className="font-black text-sm text-cyan-600 dark:text-cyan-400">{stickSold} pcs</span>
+            <div className="pt-5 border-t border-slate-200/80 dark:border-slate-800/60 bg-slate-100/70 dark:bg-slate-900/80 border-x-0 border-b-0 -mx-6 px-6 pb-5 rounded-b-3xl mt-6">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 sm:divide-x sm:divide-slate-200 dark:sm:divide-slate-800/60">
+                 {/* Left Column: Financial Sales & Shortage/Excess */}
+                 <div className="space-y-2.5">
+                   <div className="flex justify-between text-sm items-center">
+                     <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Expected Sales</span>
+                     <span className="font-black text-base text-slate-900 dark:text-white">₹{expectedSales - discount}</span>
+                   </div>
+                   <div className="flex justify-between text-sm items-center">
+                     <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Actual Sales <span className="text-slate-500 dark:text-slate-500 font-extrabold text-[9px]">(Excl. Cash Bag)</span></span>
+                     <span className="font-black text-base text-slate-900 dark:text-white">₹{actualAmount - cashBagLoaded + platformRent + additionalExpenses + bonus}</span>
+                   </div>
+                   <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200 dark:border-slate-800/60">
+                     <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">
+                       {shortage < 0 ? 'Excess' : 'Shortage'}
+                     </span>
+                     <span className={`font-black text-lg ${shortage > 0 ? 'text-pink-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                       ₹{Math.abs(shortage)}
+                     </span>
+                   </div>
                  </div>
-               )}
-               {settings.enablePot !== false && (
-                 <div className={`flex justify-between text-sm items-center ${settings.enableStick === false ? 'pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40' : ''}`}>
-                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pot Kulfi Sold</span>
-                   <span className="font-black text-sm text-purple-600 dark:text-purple-400">{potSold} pcs</span>
+
+                 {/* Right Column: Units Sold (Fills empty space and reduces height) */}
+                 <div className="space-y-2.5 sm:pl-6 pt-3 sm:pt-0 border-t sm:border-t-0 border-dashed border-slate-200 dark:border-slate-800/40">
+                   {settings.enableStick !== false && (
+                     <div className="flex justify-between text-sm items-center">
+                       <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Stick Kulfi Sold</span>
+                       <span className="font-black text-base text-cyan-600 dark:text-cyan-400">{stickSold} pcs</span>
+                     </div>
+                   )}
+                   {settings.enablePot !== false && (
+                     <div className="flex justify-between text-sm items-center">
+                       <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Pot Kulfi Sold</span>
+                       <span className="font-black text-base text-purple-600 dark:text-purple-400">{potSold} pcs</span>
+                     </div>
+                   )}
+                   {settings.enablePlate !== false && (
+                     <div className="flex justify-between text-sm items-center">
+                       <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Plate Kulfi Sold</span>
+                       <span className="font-black text-base text-amber-600 dark:text-amber-500">{plateSold} pcs</span>
+                     </div>
+                   )}
                  </div>
-               )}
-               {settings.enablePlate !== false && (
-                 <div className={`flex justify-between text-sm items-center ${settings.enableStick === false && settings.enablePot === false ? 'pt-2 border-t border-dashed border-slate-200 dark:border-slate-800/40' : ''}`}>
-                   <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Plate Kulfi Sold</span>
-                   <span className="font-black text-sm text-amber-600 dark:text-amber-500">{plateSold} pcs</span>
-                 </div>
-               )}
+               </div>
             </div>
 
           </CardContent>

@@ -79,7 +79,7 @@ export default function CashReconciliationCard({
 
   // Calculate Cash Sales collected from customers
   const grossSales = Math.max(0, expectedSales - discount);
-  const expectedCashSales = Math.max(0, grossSales - phonePe);
+  const expectedCashSales = grossSales - phonePe;
   const totalDeductions = platformRent + additionalExpenses + bonus;
 
   // Expected physical cash in bag at closing
@@ -244,7 +244,9 @@ export default function CashReconciliationCard({
 
           <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
             <span className="text-[8px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">2. Cash Sales</span>
-            <span className="text-sm font-black text-emerald-700 dark:text-emerald-400 mt-0.5 block">+₹{expectedCashSales}</span>
+            <span className="text-sm font-black text-emerald-700 dark:text-emerald-400 mt-0.5 block">
+              {expectedCashSales >= 0 ? `+₹${expectedCashSales}` : `−₹${Math.abs(expectedCashSales)}`}
+            </span>
             <span className="text-[8px] text-emerald-600/70 dark:text-emerald-400/70 font-bold block">(₹{grossSales} − ₹{phonePe} UPI)</span>
           </div>
 
@@ -449,13 +451,17 @@ export default function CashReconciliationCard({
                 <span className="font-black text-base text-slate-900 dark:text-white">
                   ₹{countedFromDenoms.toLocaleString('en-IN')}
                 </span>
-                {countedFromDenoms !== expectedPhysicalCash && (
+                {countedFromDenoms !== expectedPhysicalCash ? (
                   <span className={`text-[10px] font-bold ml-2 ${
                     countedFromDenoms > expectedPhysicalCash ? 'text-blue-600 dark:text-blue-400' : 'text-red-500'
                   }`}>
                     ({countedFromDenoms > expectedPhysicalCash ? `+₹${countedFromDenoms - expectedPhysicalCash} excess` : `−₹${expectedPhysicalCash - countedFromDenoms} short`})
                   </span>
-                )}
+                ) : countedFromDenoms > 0 ? (
+                  <span className="text-[10px] font-bold ml-2 text-emerald-600 dark:text-emerald-400">
+                    (Exact match)
+                  </span>
+                ) : null}
               </div>
 
               <Button

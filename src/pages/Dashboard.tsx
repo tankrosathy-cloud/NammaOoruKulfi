@@ -325,16 +325,16 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {latest.shortage ? (
+              {latest.shortage && latest.shortage > 0 ? (
                 <div className="text-left sm:text-right mr-1">
                   <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                     ⚠️ Shortage: {formatCurrency(latest.shortage)}
                   </span>
                 </div>
-              ) : latest.excess ? (
+              ) : (latest.shortage && latest.shortage < 0) || (latest.excess && latest.excess > 0) ? (
                 <div className="text-left sm:text-right mr-1">
                   <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                    ✨ Excess: +{formatCurrency(latest.excess)}
+                    ✨ Excess: +{formatCurrency(Math.abs(latest.shortage || latest.excess || 0))}
                   </span>
                 </div>
               ) : (
@@ -446,12 +446,24 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
         <Card className={cardBg}>
           <CardHeader className="p-5 pb-2">
             <CardTitle className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 ${labelColor}`}>
-              <TrendingDown className="w-4 h-4 text-orange-500 dark:text-orange-400" /> Shortage
+              {stats.monthlyShortage < 0 ? (
+                <><TrendingUp className="w-4 h-4 text-emerald-500 dark:text-emerald-400" /> Excess</>
+              ) : (
+                <><TrendingDown className="w-4 h-4 text-orange-500 dark:text-orange-400" /> Shortage</>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-5 pt-0">
-            <div className="text-xl sm:text-2xl font-black leading-none text-orange-500 dark:text-orange-400 truncate">{formatCurrency(stats.monthlyShortage)}</div>
-            <p className="text-[10px] font-extrabold text-orange-500 dark:text-orange-400 uppercase tracking-wider mt-2">This month</p>
+            <div className={`text-xl sm:text-2xl font-black leading-none truncate ${
+              stats.monthlyShortage < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-orange-500 dark:text-orange-400'
+            }`}>
+              {stats.monthlyShortage < 0 ? `+${formatCurrency(Math.abs(stats.monthlyShortage))}` : formatCurrency(stats.monthlyShortage)}
+            </div>
+            <p className={`text-[10px] font-extrabold uppercase tracking-wider mt-2 ${
+              stats.monthlyShortage < 0 ? 'text-emerald-500 dark:text-emerald-400' : 'text-orange-500 dark:text-orange-400'
+            }`}>
+              {stats.monthlyShortage < 0 ? 'Surplus this month' : 'This month'}
+            </p>
           </CardContent>
         </Card>
       </motion.div>

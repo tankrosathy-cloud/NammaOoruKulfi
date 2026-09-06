@@ -4,13 +4,17 @@ import { db } from '../lib/firebase';
 import { onSnapshotsInSync } from 'firebase/firestore';
 import { useSync } from '../store';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { useFranchise } from '../context/FranchiseContext';
+import { auth } from '../lib/firebase';
 
 export default function SyncStatus() {
   const { syncNow, isSyncing: isStoreSyncing, databaseType } = useSync();
+  const { profile } = useFranchise();
+  const isSuperAdmin = profile?.role === 'superadmin' || auth.currentUser?.email === 'superadmin@gmail.com';
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [justSynced, setJustSynced] = useState(false);
-  const isSupabase = databaseType === 'supabase' || isSupabaseConfigured();
+  const isSupabase = isSuperAdmin && (databaseType === 'supabase' || isSupabaseConfigured());
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const justSyncedTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 

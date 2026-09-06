@@ -542,7 +542,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
             <div className="flex justify-between items-start mb-1">
               <div>
                 <p className={`text-[10px] uppercase tracking-widest ${isDark ? 'text-purple-400 font-bold' : 'text-purple-800 font-black'}`}>
-                  Monthly Cash Shortage {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• பற்றாக்குறை</span>}
+                  {activeStats.shortage < 0 ? 'Monthly Cash Excess' : 'Monthly Cash Shortage'} {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• {activeStats.shortage < 0 ? 'உபரி' : 'பற்றாக்குறை'}</span>}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                   Drawer closing difference for {format(currentDate, 'MMMM yyyy')} ({filteredEntries.length} daily entries recorded)
@@ -555,7 +555,9 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
               </span>
             </div>
             <div className="flex items-baseline gap-3 mt-3">
-              <p className="text-3xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.shortage)}</p>
+              <p className="text-3xl font-black text-slate-950 dark:text-white">
+                {activeStats.shortage < 0 ? `+${formatCurrency(Math.abs(activeStats.shortage))}` : formatCurrency(activeStats.shortage)}
+              </p>
               {activeStats.shortage > 0 ? (
                 <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                   ⚠️ Total Short ₹{activeStats.shortage.toLocaleString('en-IN')}
@@ -629,7 +631,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
               <div>
                 <div className="flex justify-between items-center gap-1 mb-1">
                   <p className={`text-[10px] uppercase tracking-wider font-black leading-tight ${isDark ? 'text-purple-400' : 'text-purple-800'}`}>
-                    Cash Shortage {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• பற்றாக்குறை</span>}
+                    {activeStats.shortage < 0 ? 'Cash Excess' : 'Cash Shortage'} {showTamil && <span className="text-[9px] font-bold text-purple-600 dark:text-purple-300 ml-1">• {activeStats.shortage < 0 ? 'உபரி' : 'பற்றாக்குறை'}</span>}
                   </p>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0 ${
                     isDark ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-200/80 text-purple-900'
@@ -643,7 +645,9 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                 </p>
               </div>
               <div className="flex flex-wrap items-baseline gap-1.5 mt-2.5">
-                <p className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white">{formatCurrency(activeStats.shortage)}</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white">
+                  {activeStats.shortage < 0 ? `+${formatCurrency(Math.abs(activeStats.shortage))}` : formatCurrency(activeStats.shortage)}
+                </p>
                 {activeStats.shortage > 0 ? (
                   <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                     ⚠️ Short
@@ -926,9 +930,9 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                           ⚠️ Short ₹{entry.shortage}
                         </span>
-                      ) : entry.excess && entry.excess > 0 ? (
+                      ) : (entry.shortage && entry.shortage < 0) || (entry.excess && entry.excess > 0) ? (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                          ✨ Excess +₹{entry.excess}
+                          ✨ Excess +₹{Math.abs(entry.shortage || entry.excess || 0)}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
@@ -1033,13 +1037,17 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                       <div className="flex items-center gap-4">
                         <div>
                           <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                            Cash Shortage {showTamil && <span className="text-[9px] text-slate-400">• பற்றாக்குறை</span>}
+                            {(entry.shortage || 0) < 0 ? (
+                              <>Cash Excess {showTamil && <span className="text-[9px] text-slate-400">• உபரி</span>}</>
+                            ) : (
+                              <>Cash Shortage {showTamil && <span className="text-[9px] text-slate-400">• பற்றாக்குறை</span>}</>
+                            )}
                           </p>
-                          <p className={`font-black text-sm ${entry.shortage > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                            {formatCurrency(entry.shortage || 0)}
+                          <p className={`font-black text-sm ${(entry.shortage || 0) > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {(entry.shortage || 0) < 0 ? `+${formatCurrency(Math.abs(entry.shortage || 0))}` : formatCurrency(entry.shortage || 0)}
                           </p>
                         </div>
-                        {entry.excess && entry.excess > 0 ? (
+                        {entry.excess && entry.excess > 0 && !(entry.shortage && entry.shortage < 0) ? (
                           <div>
                             <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
                               Cash Excess {showTamil && <span className="text-[9px] text-slate-400">• உபரி</span>}
@@ -1396,13 +1404,13 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                       </div>
                       <div className="text-right">
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Register Status</p>
-                        {viewEntry.shortage > 0 ? (
+                        {(viewEntry.shortage || 0) > 0 ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                             ⚠️ Short ₹{viewEntry.shortage}
                           </span>
-                        ) : viewEntry.excess && viewEntry.excess > 0 ? (
+                        ) : (viewEntry.shortage || 0) < 0 || (viewEntry.excess && viewEntry.excess > 0) ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                            ✨ Excess +₹{viewEntry.excess}
+                            ✨ Excess +₹{Math.abs(viewEntry.shortage || viewEntry.excess || 0)}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
@@ -1414,14 +1422,14 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
 
                     <div className="p-4 rounded-xl border bg-purple-500/5 border-purple-500/20">
                       <p className="text-[10px] font-black uppercase tracking-widest text-purple-700 dark:text-purple-300 mb-1">
-                        Cash Shortage {showTamil && <span className="text-[9px] text-purple-500 dark:text-purple-400">• பற்றாக்குறை</span>}
+                        {(viewEntry.shortage || 0) < 0 ? 'Cash Excess' : 'Cash Shortage'} {showTamil && <span className="text-[9px] text-purple-500 dark:text-purple-400">• {(viewEntry.shortage || 0) < 0 ? 'உபரி' : 'பற்றாக்குறை'}</span>}
                       </p>
                       <div className="flex items-baseline gap-2">
-                        <p className={`text-2xl font-black ${viewEntry.shortage > 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {formatCurrency(viewEntry.shortage || 0)}
+                        <p className={`text-2xl font-black ${(viewEntry.shortage || 0) > 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {(viewEntry.shortage || 0) < 0 ? `+${formatCurrency(Math.abs(viewEntry.shortage || 0))}` : formatCurrency(viewEntry.shortage || 0)}
                         </p>
                         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                          {viewEntry.shortage > 0 ? '(Counter cash shortfall)' : viewEntry.shortage === 0 ? '(No cash shortage)' : '(Cash surplus)'}
+                          {(viewEntry.shortage || 0) > 0 ? '(Counter cash shortfall)' : (viewEntry.shortage || 0) === 0 ? '(No cash shortage)' : '(Cash surplus / excess)'}
                         </span>
                       </div>
                       {viewEntry.excess && viewEntry.excess > 0 ? (
@@ -1575,16 +1583,20 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-                          <span>Shortage</span>
-                          {showTamil && <span className="text-[9px] text-slate-400">• பற்றாக்குறை</span>}
+                          <span>{(viewEntry.shortage || 0) < 0 ? 'Excess' : 'Shortage'}</span>
+                          {showTamil && <span className="text-[9px] text-slate-400">• {(viewEntry.shortage || 0) < 0 ? 'உபரி' : 'பற்றாக்குறை'}</span>}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                          <p className={`font-black text-sm ${viewEntry.shortage > 0 ? 'text-rose-500' : isDark ? 'text-white' : 'text-slate-800'}`}>
-                            {formatCurrency(viewEntry.shortage || 0)}
+                          <p className={`font-black text-sm ${(viewEntry.shortage || 0) > 0 ? 'text-rose-500' : (viewEntry.shortage || 0) < 0 ? 'text-emerald-600 dark:text-emerald-400' : isDark ? 'text-white' : 'text-slate-800'}`}>
+                            {(viewEntry.shortage || 0) < 0 ? `+${formatCurrency(Math.abs(viewEntry.shortage || 0))}` : formatCurrency(viewEntry.shortage || 0)}
                           </p>
-                          {viewEntry.shortage > 0 ? (
+                          {(viewEntry.shortage || 0) > 0 ? (
                             <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25">
                               ⚠️ Short
+                            </span>
+                          ) : (viewEntry.shortage || 0) < 0 ? (
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                              ✨ Excess
                             </span>
                           ) : (
                             <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">

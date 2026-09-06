@@ -4,15 +4,17 @@ import { db } from '../lib/firebase';
 import { Franchise, UserProfile } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useTheme } from '../context/ThemeContext';
-import { Users, Store, Shield, Key, Eye, RotateCw } from 'lucide-react';
+import { Users, Store, Shield, Key, Eye, RotateCw, Database } from 'lucide-react';
 import { useFranchise } from '../context/FranchiseContext';
 import { Button } from '../components/ui/button';
+import SupabaseManager from '../components/SupabaseManager';
 
 export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeAdminTab, setActiveAdminTab] = useState<'franchises' | 'database'>('franchises');
   
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -80,7 +82,37 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Superadmin Tab Navigation */}
+      <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-fit">
+        <button
+          onClick={() => setActiveAdminTab('franchises')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            activeAdminTab === 'franchises'
+              ? 'bg-cyan-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Store className="w-4 h-4" />
+          <span>Franchises & Users</span>
+        </button>
+        <button
+          onClick={() => setActiveAdminTab('database')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            activeAdminTab === 'database'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>Database</span>
+        </button>
+      </div>
+
+      {activeAdminTab === 'database' ? (
+        <SupabaseManager />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card className={`border ${isDark ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
           <CardHeader>
             <CardTitle className="text-sm font-bold uppercase tracking-widest text-slate-500 flex items-center gap-2">
@@ -234,6 +266,8 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

@@ -58,10 +58,9 @@ import { calculateAvailableStock, calculateDailyStockLedger, DayStockLedgerRow }
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
-  const currentUsername = (auth.currentUser?.email || '').split('@')[0].toLowerCase();
-  const isAdminUser = currentUsername === 'admin' || currentUsername === 'tankrosathy' || currentUsername === 'nammaoorukulfisathy';
+  const { profile, franchise } = useFranchise();
+  const isSuperAdmin = profile?.role === 'superadmin' || auth.currentUser?.email === 'superadmin@gmail.com';
 
-  
   const handleCopyInvite = async () => {
     if (!franchise?.inviteCode) return;
     try {
@@ -97,9 +96,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     role === 'owner' ? 'inventory' : 'inventory'
   );
 
+  // Guard against non-superadmins accessing database tab
+  useEffect(() => {
+    if (!isSuperAdmin && activeTab === 'database') {
+      setActiveTab('inventory');
+    }
+  }, [isSuperAdmin, activeTab]);
+
   // Settings State
   const { settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
-  const { profile, franchise } = useFranchise();
   const [inviteCopied, setInviteCopied] = useState(false);
   const [staffUsers, setStaffUsers] = useState<UserProfile[]>([]);
   const [loadingStaff, setLoadingStaff] = useState(false);
@@ -740,8 +745,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
           )}
         </div>
 
-        {/* Bottom Row: Franchise, Help, and Database (if admin) */}
-        <div className={`grid ${isAdminUser ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
+        {/* Bottom Row: Franchise, Help, and Database (Superadmin only) */}
+        <div className={`grid ${isSuperAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
           <button
             onClick={() => setActiveTab('franchise')}
             className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'franchise' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
@@ -756,7 +761,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
             <HelpCircle className="w-3.5 h-3.5 shrink-0" />
             <span>Help</span>
           </button>
-          {isAdminUser && (
+          {isSuperAdmin && (
             <button
               onClick={() => setActiveTab('database')}
               className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'database' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
@@ -2206,8 +2211,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
         </div>
       )}
 
-      {/* DATABASE TAB */}
-      {activeTab === 'database' && isAdminUser && (
+      {/* DATABASE TAB (Super Admin Only) */}
+      {activeTab === 'database' && isSuperAdmin && (
         <SupabaseManager />
       )}
 
