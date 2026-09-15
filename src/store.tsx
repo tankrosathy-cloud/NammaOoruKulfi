@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from './types';
 import { db, auth } from './lib/firebase';
-import { collection, onSnapshot, doc, getDocs, getDocsFromServer, getDocFromServer, setDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { INITIAL_AUGUST_ENTRIES, INITIAL_AUGUST_EXPENSES, INITIAL_AUGUST_SPECIAL_ORDERS } from './lib/augustDataset';
 import { isSupabaseConfigured, getSupabaseClient } from './lib/supabase';
@@ -671,30 +671,75 @@ const StoreContext = createContext<StoreState | null>(null);
 
 export function StoreProvider({ franchiseId, children }: { franchiseId?: string | null; children: ReactNode }) {
   const activeFid = franchiseId || currentFranchiseId;
+  const cacheKeySuffix = activeFid || 'global';
   const [databaseType, setDatabaseType] = useState<'supabase' | 'firestore'>(() => {
     return isSupabaseConfigured() ? 'supabase' : 'firestore';
   });
 
-  const [entries, setEntries] = useState<DailyEntry[]>([]);
-  const [entriesLoading, setEntriesLoading] = useState(true);
+  // 1. Instant Cache Hydration: Read immediately from localStorage so UI displays within 0.05s
+  const [entries, setEntries] = useState<DailyEntry[]>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_entries_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [entriesLoading, setEntriesLoading] = useState(() => entries.length === 0);
   const [entriesLimit, setEntriesLimit] = useState(1000);
   const [hasMoreEntries, setHasMoreEntries] = useState(true);
   
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settings, setSettings] = useState<Settings>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_settings_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : DEFAULT_SETTINGS;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  });
+  const [settingsLoading, setSettingsLoading] = useState(false);
 
-  const [inventory, setInventory] = useState<InventoryStock>(DEFAULT_INVENTORY);
-  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventory, setInventory] = useState<InventoryStock>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_inventory_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : DEFAULT_INVENTORY;
+    } catch {
+      return DEFAULT_INVENTORY;
+    }
+  });
+  const [inventoryLoading, setInventoryLoading] = useState(false);
 
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
-  const [expensesLoading, setExpensesLoading] = useState(true);
+  const [expenses, setExpenses] = useState<ExpenseEntry[]>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_expenses_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [expensesLoading, setExpensesLoading] = useState(() => expenses.length === 0);
   const [expensesLimit, setExpensesLimit] = useState(1000);
   const [hasMoreExpenses, setHasMoreExpenses] = useState(true);
 
-  const [profitWithdrawals, setProfitWithdrawals] = useState<ProfitWithdrawal[]>([]);
-  const [profitWithdrawalsLoading, setProfitWithdrawalsLoading] = useState(true);
-  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>([]);
-  const [specialOrdersLoading, setSpecialOrdersLoading] = useState(true);
+  const [profitWithdrawals, setProfitWithdrawals] = useState<ProfitWithdrawal[]>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_profits_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [profitWithdrawalsLoading, setProfitWithdrawalsLoading] = useState(false);
+  
+  const [specialOrders, setSpecialOrders] = useState<SpecialOrder[]>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_specials_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [specialOrdersLoading, setSpecialOrdersLoading] = useState(false);
 
   const [dailyDenominationsMap, setDailyDenominationsMap] = useState<Record<string, DailyDenominationsRecord>>({});
 
@@ -706,6 +751,14 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
     setIsSyncing(true);
+
+    const withTimeout = async <T,>(p: Promise<T>, ms = 4500): Promise<T | null> => {
+      let t: any;
+      const timeoutPromise = new Promise<null>((resolve) => {
+        t = setTimeout(() => resolve(null), ms);
+      });
+      return Promise.race([p, timeoutPromise]).finally(() => clearTimeout(t));
+    };
 
     try {
       const usingSupabase = isSupabaseConfigured();
@@ -720,19 +773,21 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
           supProfits,
           supSpecials
         ] = await Promise.all([
-          fetchEntriesFromSupabase(),
-          fetchSettingsFromSupabase(),
-          fetchInventoryFromSupabase(),
-          fetchExpensesFromSupabase(),
-          fetchProfitWithdrawalsFromSupabase(),
-          fetchSpecialOrdersFromSupabase()
+          withTimeout(fetchEntriesFromSupabase()),
+          withTimeout(fetchSettingsFromSupabase()),
+          withTimeout(fetchInventoryFromSupabase()),
+          withTimeout(fetchExpensesFromSupabase()),
+          withTimeout(fetchProfitWithdrawalsFromSupabase()),
+          withTimeout(fetchSpecialOrdersFromSupabase())
         ]);
 
         const dMap: Record<string, DailyDenominationsRecord> = {};
 
         if (supEntries && supEntries.length > 0) {
           const filteredEntries = (activeFid && activeFid !== 'all') ? supEntries.filter(e => e.franchiseId === activeFid) : supEntries;
-          setEntries(filteredEntries.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const sorted = filteredEntries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setEntries(sorted);
+          try { localStorage.setItem(`kulfi_cache_entries_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
           setEntriesLoading(false);
 
           filteredEntries.forEach(e => {
@@ -757,14 +812,17 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
               };
             }
           });
-        } else {
+        } else if (supEntries) {
           setEntries([]);
+          try { localStorage.setItem(`kulfi_cache_entries_${cacheKeySuffix}`, JSON.stringify([])); } catch {}
+          setEntriesLoading(false);
+        } else {
           setEntriesLoading(false);
         }
 
-        // Also fetch live drafts from Firestore daily_denominations for this franchise
+        // Also fetch live drafts from Firestore daily_denominations for this franchise with timeout
         try {
-          const denomsSnap = await getDocs(buildFranchiseQuery(db, 'daily_denominations', activeFid));
+          const denomsSnap = await withTimeout(getDocs(buildFranchiseQuery(db, 'daily_denominations', activeFid)), 3000);
           if (denomsSnap && !denomsSnap.empty) {
             denomsSnap.docs.forEach(docSnap => {
               const d = docSnap.data() as DailyDenominationsRecord;
@@ -779,39 +837,51 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
         if (supSettings) {
           setSettings(supSettings);
-        } else {
-          setSettings(DEFAULT_SETTINGS);
+          try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(supSettings)); } catch {}
         }
         setSettingsLoading(false);
 
         if (supInventory) {
           setInventory(supInventory);
-        } else {
-          setInventory(DEFAULT_INVENTORY);
+          try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(supInventory)); } catch {}
         }
         setInventoryLoading(false);
 
         if (supExpenses && supExpenses.length > 0) {
           const filteredExpenses = (activeFid && activeFid !== 'all') ? supExpenses.filter(e => e.franchiseId === activeFid) : supExpenses;
-          setExpenses(filteredExpenses.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const sorted = filteredExpenses.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setExpenses(sorted);
+          try { localStorage.setItem(`kulfi_cache_expenses_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+          setExpensesLoading(false);
+        } else if (supExpenses) {
+          setExpenses([]);
+          try { localStorage.setItem(`kulfi_cache_expenses_${cacheKeySuffix}`, JSON.stringify([])); } catch {}
           setExpensesLoading(false);
         } else {
-          setExpenses([]);
           setExpensesLoading(false);
         }
 
         if (supProfits) {
           const filteredProfits = (activeFid && activeFid !== 'all') ? supProfits.filter(e => e.franchiseId === activeFid) : supProfits;
-          setProfitWithdrawals(filteredProfits.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const sorted = filteredProfits.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setProfitWithdrawals(sorted);
+          try { localStorage.setItem(`kulfi_cache_profits_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+          setProfitWithdrawalsLoading(false);
+        } else {
           setProfitWithdrawalsLoading(false);
         }
 
         if (supSpecials && supSpecials.length > 0) {
           const filteredSpecials = (activeFid && activeFid !== 'all') ? supSpecials.filter(e => e.franchiseId === activeFid) : supSpecials;
-          setSpecialOrders(filteredSpecials.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+          const sorted = filteredSpecials.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          setSpecialOrders(sorted);
+          try { localStorage.setItem(`kulfi_cache_specials_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+          setSpecialOrdersLoading(false);
+        } else if (supSpecials) {
+          setSpecialOrders([]);
+          try { localStorage.setItem(`kulfi_cache_specials_${cacheKeySuffix}`, JSON.stringify([])); } catch {}
           setSpecialOrdersLoading(false);
         } else {
-          setSpecialOrders([]);
           setSpecialOrdersLoading(false);
         }
 
@@ -819,20 +889,20 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         return;
       }
 
-      // Firestore Fetching
+      // Firestore Fetching with cache-first and timeout guard
       const fetchCollection = async (collName: string) => {
         try {
-          return await getDocsFromServer(buildFranchiseQuery(db, collName, activeFid));
+          return await withTimeout(getDocs(buildFranchiseQuery(db, collName, activeFid)), 4000);
         } catch {
-          return await getDocs(buildFranchiseQuery(db, collName, activeFid));
+          return null;
         }
       };
 
       const fetchDocument = async (collName: string, docId: string) => {
         try {
-          return await getDocFromServer(doc(db, collName, docId));
+          return await withTimeout(getDoc(doc(db, collName, docId)), 4000);
         } catch {
-          return await getDoc(doc(db, collName, docId));
+          return null;
         }
       };
 
@@ -867,43 +937,59 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
       if (entriesSnap) {
         const docs = entriesSnap.docs.map(d => ({ ...d.data(), id: d.id } as DailyEntry));
-        setEntries(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        const sorted = docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setEntries(sorted);
+        try { localStorage.setItem(`kulfi_cache_entries_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+        setEntriesLoading(false);
+      } else {
         setEntriesLoading(false);
       }
 
       if (settingsSnap && settingsSnap.exists()) {
         const data = settingsSnap.data() as Settings;
         setSettings(data);
-      } else {
+        try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
+      } else if (settingsSnap) {
         setSettings(DEFAULT_SETTINGS);
       }
       setSettingsLoading(false);
 
       if (inventorySnap && inventorySnap.exists()) {
-        setInventory(inventorySnap.data() as InventoryStock);
-      } else {
+        const data = inventorySnap.data() as InventoryStock;
+        setInventory(data);
+        try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
+      } else if (inventorySnap) {
         setInventory(DEFAULT_INVENTORY);
       }
       setInventoryLoading(false);
 
       if (expensesSnap) {
         const docs = expensesSnap.docs.map(d => ({ ...d.data(), id: d.id } as ExpenseEntry));
-        const existingSignatures = new Set(docs.map(d => `${d.date}-${d.amount}-${d.category}`));
-        const existingIds = new Set(docs.map(d => d.id));
-        setExpenses(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        const sorted = docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setExpenses(sorted);
+        try { localStorage.setItem(`kulfi_cache_expenses_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+        setExpensesLoading(false);
+      } else {
         setExpensesLoading(false);
       }
 
       if (profitsSnap) {
         const docs = profitsSnap.docs.map(d => ({ ...d.data(), id: d.id } as ProfitWithdrawal));
-        setProfitWithdrawals(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        const sorted = docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setProfitWithdrawals(sorted);
+        try { localStorage.setItem(`kulfi_cache_profits_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+        setProfitWithdrawalsLoading(false);
+      } else {
         setProfitWithdrawalsLoading(false);
       }
 
       if (specialsSnap) {
         const docs = specialsSnap.docs.map(d => ({ ...d.data(), id: d.id } as SpecialOrder));
-        const existingIds = new Set(docs.map(d => d.id));
-        setSpecialOrders(docs.sort((a, b) => (b.date || '').localeCompare(a.date || '')));
+        const sorted = docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setSpecialOrders(sorted);
+        try { localStorage.setItem(`kulfi_cache_specials_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+        setSpecialOrdersLoading(false);
+      } else {
         setSpecialOrdersLoading(false);
       }
 
@@ -920,7 +1006,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       setIsSyncing(false);
       isRefreshingRef.current = false;
     }
-  }, []);
+  }, [activeFid, cacheKeySuffix]);
 
   useEffect(() => {
     console.log('StoreProvider useEffect, currentFranchiseId:', currentFranchiseId);
@@ -1078,26 +1164,34 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
     refreshAllFromServer();
 
-    const handleFocus = () => refreshAllFromServer();
-    const handleVisibilityChange = () => {
-      if (!document.hidden) refreshAllFromServer();
+    let lastAutoRefresh = 0;
+    const throttledRefresh = () => {
+      const now = Date.now();
+      if (now - lastAutoRefresh > 8000) {
+        lastAutoRefresh = now;
+        refreshAllFromServer();
+      }
     };
+
     const handleDataUpdated = () => refreshAllFromServer();
 
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', throttledRefresh);
+    const handleVisibilityChange = () => {
+      if (!document.hidden) throttledRefresh();
+    };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('app-data-updated', handleDataUpdated);
     window.addEventListener('franchiseChanged', handleDataUpdated);
 
     if (syncChannel) {
-      syncChannel.onmessage = () => refreshAllFromServer();
+      syncChannel.onmessage = () => throttledRefresh();
     }
 
     return () => {
       unsubs.forEach(u => {
         try { u(); } catch {}
       });
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', throttledRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('app-data-updated', handleDataUpdated);
       window.removeEventListener('franchiseChanged', handleDataUpdated);

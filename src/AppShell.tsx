@@ -101,6 +101,7 @@ function AppShellContent() {
   }, [activeTab]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     const mainContainer = document.querySelector('main');
     if (mainContainer) mainContainer.scrollTo(0, 0);
   }, [activeTab]);
@@ -173,6 +174,7 @@ function AppShellContent() {
       switchFranchise('superadmin');
     }
     setActiveTab(tab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     const mainContainer = document.querySelector('main');
     if (mainContainer) mainContainer.scrollTo(0, 0);
   };
@@ -190,13 +192,13 @@ function AppShellContent() {
   };
 
   return (
-    <div className={`flex flex-col h-screen font-sans overflow-hidden transition-colors duration-300 ${
+    <div className={`flex flex-col min-h-screen font-sans transition-colors duration-300 ${
       isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
     }`}>
-      <header className={`px-2 sm:px-6 py-2 sm:py-4 sticky top-0 z-10 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
+      <header className={`px-2 sm:px-6 py-2 sm:py-4 sticky top-0 z-30 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
         isDark 
-          ? 'bg-[#0B0F19]/90 border-slate-800/60' 
-          : 'bg-white border-slate-300 shadow-md shadow-slate-100'
+          ? 'bg-[#0B0F19]/95 border-slate-800/60' 
+          : 'bg-white/95 border-slate-300 shadow-md shadow-slate-100'
       }`}>
         <div className="flex items-center gap-1 sm:gap-3 min-w-0 shrink">
           <Logo className={`w-7 h-7 sm:w-9 sm:h-9 shrink-0 transition-all ${
@@ -375,7 +377,7 @@ function AppShellContent() {
         </div>
       )}
       
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-24">
+      <main className="flex-1 overflow-x-hidden pb-28">
         {activeTab === 'dashboard' && navRole === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
         {activeTab === 'add' && <AddEntry role={navRole as any} onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && navRole === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
@@ -385,10 +387,10 @@ function AppShellContent() {
         {activeTab === 'superadmin' && baseRole === 'superadmin' && <SuperAdmin onNavigate={(tab) => navigateTab(tab as any)} />}
       </main>
 
-      <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-20 transition-all duration-300 border-t ${
+      <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-30 transition-all duration-300 border-t ${
         isDark 
           ? 'bg-[#111827]/95 border-slate-800 backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]' 
-          : 'bg-white border-slate-300 shadow-[0_-4px_24px_rgba(15,23,42,0.1)]'
+          : 'bg-white/95 border-slate-300 backdrop-blur-xl shadow-[0_-4px_24px_rgba(15,23,42,0.1)]'
       }`}>
         {baseRole === 'superadmin' && !franchise && (
           <NavItem 

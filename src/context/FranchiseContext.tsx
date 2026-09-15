@@ -25,26 +25,84 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
-        setLoading(true);
+        // 1. Instant Cache Hydration - unlock UI immediately if cached credentials exist
+        let hasCache = false;
         try {
-          const profileDoc = await getDoc(doc(db, 'users', user.uid));
+          const cachedPStr = localStorage.getItem(`namma_profile_${user.uid}`);
+          const cachedFStr = localStorage.getItem(`namma_franchise_${user.uid}`);
+          if (cachedPStr) {
+            const cachedP = JSON.parse(cachedPStr) as UserProfile;
+            setProfile(cachedP);
+            setCurrentFranchiseId(cachedP.franchiseId);
+            if (cachedFStr) {
+              setFranchise(JSON.parse(cachedFStr) as Franchise);
+            }
+            hasCache = true;
+            setLoading(false); // Immediate unlock for instant login!
+          }
+        } catch (e) {
+          console.warn("Could not parse local franchise cache", e);
+        }
+
+        if (!hasCache) {
+          setLoading(true);
+        }
+
+        // 2. Fetch fresh profile and franchise with strict timeout guards
+        // to prevent 30-40s hangs on slow/flaky cellular networks
+        const fetchWithTimeout = async <T,>(p: Promise<T>, timeoutMs = 4500): Promise<T> => {
+          let timer: any;
+          const timeoutPromise = new Promise<T>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Network timeout - falling back')), timeoutMs);
+          });
+          return Promise.race([p, timeoutPromise]).finally(() => clearTimeout(timer));
+        };
+
+        try {
+          const profileDoc = await fetchWithTimeout(getDoc(doc(db, 'users', user.uid)));
           if (profileDoc.exists()) {
             const pData = profileDoc.data() as UserProfile;
             setProfile(pData);
             setCurrentFranchiseId(pData.franchiseId);
+            try {
+              localStorage.setItem(`namma_profile_${user.uid}`, JSON.stringify(pData));
+            } catch {}
             window.dispatchEvent(new Event('franchiseChanged'));
-            const fDoc = await getDoc(doc(db, 'franchises', pData.franchiseId));
-            if (fDoc.exists()) {
-              setFranchise(fDoc.data() as Franchise);
+
+            if (pData.franchiseId) {
+              try {
+                const fDoc = await fetchWithTimeout(getDoc(doc(db, 'franchises', pData.franchiseId)), 3000);
+                if (fDoc.exists()) {
+                  const fData = fDoc.data() as Franchise;
+                  setFranchise(fData);
+                  try {
+                    localStorage.setItem(`namma_franchise_${user.uid}`, JSON.stringify(fData));
+                  } catch {}
+                }
+              } catch (fErr) {
+                console.warn('Franchise fetch timed out or offline, using cache if available');
+              }
             }
           } else {
-            setProfile(null);
-            setFranchise(null);
-            setCurrentFranchiseId(null);
-            window.dispatchEvent(new Event('franchiseChanged'));
+            // Handle superadmin special case
+            if (user.email === 'superadmin@gmail.com') {
+              const superProfile: UserProfile = {
+                uid: user.uid,
+                email: user.email,
+                role: 'superadmin',
+                franchiseId: ''
+              };
+              setProfile(superProfile);
+              setCurrentFranchiseId('all');
+            } else {
+              setProfile(null);
+              setFranchise(null);
+              setCurrentFranchiseId(null);
+              window.dispatchEvent(new Event('franchiseChanged'));
+            }
           }
         } catch (err) {
-          console.error(err);
+          console.warn("User profile fetch timed out or error occurred; using cached or fallback profile:", err);
         } finally {
           setLoading(false);
         }
@@ -106,6 +164,10 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
     };
     
     await setDoc(doc(db, 'users', user.uid), newProfile);
+    try {
+      localStorage.setItem(`namma_profile_${user.uid}`, JSON.stringify(newProfile));
+      localStorage.setItem(`namma_franchise_${user.uid}`, JSON.stringify(franchiseData));
+    } catch {}
     
     setProfile(newProfile);
     setFranchise(franchiseData);
@@ -118,12 +180,21 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
       setFranchise(null);
       return;
     }
-    const fDoc = await getDoc(doc(db, 'franchises', franchiseId));
-    if (fDoc.exists()) {
-      const fData = fDoc.data() as Franchise;
-      setCurrentFranchiseId(fData.id);
-      window.dispatchEvent(new Event('franchiseChanged'));
-      setFranchise(fData);
+    try {
+      const fDoc = await getDoc(doc(db, 'franchises', franchiseId));
+      if (fDoc.exists()) {
+        const fData = fDoc.data() as Franchise;
+        setCurrentFranchiseId(fData.id);
+        window.dispatchEvent(new Event('franchiseChanged'));
+        setFranchise(fData);
+        if (auth.currentUser) {
+          try {
+            localStorage.setItem(`namma_franchise_${auth.currentUser.uid}`, JSON.stringify(fData));
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn("Switch franchise error:", e);
     }
   };
 

@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Namma Ooru Kulfi",
+  "short_name": "Kulfi App",
+  "description": "Daily sales, inventory, and expense tracking dashboard for Namma Ooru Kulfi.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0f19",
+  "theme_color": "#06b6d4",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

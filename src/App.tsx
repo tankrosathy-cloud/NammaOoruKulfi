@@ -46,7 +46,13 @@ export default function App() {
   }
 
   if (user.email === 'superadmin@gmail.com') {
-    return <SuperAdmin />;
+    return (
+      <div className={`min-h-screen transition-colors duration-300 ${
+        isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
+      }`}>
+        <SuperAdmin />
+      </div>
+    );
   }
 
   if (!profile) {
