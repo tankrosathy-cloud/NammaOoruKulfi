@@ -1,6 +1,22 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Gracefully prevent unhandled WebSocket closure errors from Vite HMR in iframe preview
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event && event.reason;
+        var msg = (reason && (reason.message || reason.stack || String(reason))) || '';
+        if (msg.includes('WebSocket') || msg.includes('ws') || msg.includes('@vite/client')) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var msg = (event && (event.message || '')) + ' ' + (event && event.filename || '');
+        if (msg.includes('WebSocket') || msg.includes('@vite/client')) {
+          event.preventDefault();
+        }
+      });
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0B0F19" />

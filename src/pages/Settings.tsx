@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useSettings, saveSettings, useInventory, saveInventoryStock, useEntries, useSpecialOrders } from '../store';
+import { useSettings, saveSettings, useInventory, saveInventoryStock, useEntries, useSpecialOrders, currentFranchiseId } from '../store';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../components/ui/card';
 import { useFranchise } from '../context/FranchiseContext';
 import { Label } from '../components/ui/label';
@@ -331,6 +331,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [inventoryData, setInventoryData] = useState<{
+    mode: 'current_physical' | 'opening_baseline';
     stickQuantity: number | '';
     potQuantity: number | '';
     plateQuantity: number | '';
@@ -339,12 +340,14 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     potFlavours: { name: string; quantity: number }[];
     plateFlavours: { name: string; quantity: number }[];
   }>({
+    mode: 'current_physical',
     stickQuantity: '',
     potQuantity: '',
     plateQuantity: '',
     lastUpdatedDate: todayStr,
     stickFlavours: [],
-    potFlavours: []
+    potFlavours: [],
+    plateFlavours: []
   });
 
   // Calculate live available stock and stats via centralized utility
@@ -445,12 +448,14 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   // Edit stock baseline handlers
   const startInventoryEdit = () => {
     setInventoryData({
-      stickQuantity: inventory.stickQuantity ?? 0,
-      potQuantity: inventory.potQuantity ?? 0,
-      plateQuantity: inventory.plateQuantity ?? 0,
-      lastUpdatedDate: (inventory.lastUpdatedDate || todayStr).split('T')[0],
+      mode: 'current_physical',
+      stickQuantity: availableStick,
+      potQuantity: availablePot,
+      plateQuantity: availablePlate,
+      lastUpdatedDate: todayStr,
       stickFlavours: inventory.stickFlavours || [],
-      potFlavours: inventory.potFlavours || []
+      potFlavours: inventory.potFlavours || [],
+      plateFlavours: inventory.plateFlavours || []
     });
     setIsEditingInventory(true);
   };
@@ -458,6 +463,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const handleSetStockToday = () => {
     setInventoryData(prev => ({
       ...prev,
+      mode: 'current_physical',
       stickQuantity: availableStick,
       potQuantity: availablePot,
       plateQuantity: availablePlate,
@@ -467,6 +473,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
 
   const handleResetToRecordedBase = () => {
     setInventoryData({
+      mode: 'opening_baseline',
       stickQuantity: inventory.stickQuantity ?? 0,
       potQuantity: inventory.potQuantity ?? 0,
       plateQuantity: inventory.plateQuantity ?? 0,
@@ -480,11 +487,38 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const handleInventorySave = async () => {
     // Ensure clean YYYY-MM-DD date format
     const cleanDate = (inventoryData.lastUpdatedDate || todayStr).split('T')[0];
+    const enteredStick = Math.max(0, Number(inventoryData.stickQuantity) || 0);
+    const enteredPot = Math.max(0, Number(inventoryData.potQuantity) || 0);
+    const enteredPlate = Math.max(0, Number(inventoryData.plateQuantity) || 0);
+
+    let finalStickBaseline = enteredStick;
+    let finalPotBaseline = enteredPot;
+    let finalPlateBaseline = enteredPlate;
+
+    if (inventoryData.mode === 'current_physical') {
+      const relevantEntries = entries.filter(e => e.date >= cleanDate);
+      const relevantSpecials = specialOrders.filter(s => s.date >= cleanDate);
+
+      const alreadyDeductedStick = 
+        relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0) +
+        relevantSpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
+      const alreadyDeductedPot = 
+        relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0) +
+        relevantSpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+      const alreadyDeductedPlate = 
+        relevantEntries.reduce((sum, e) => sum + (e.plateSold || 0), 0) +
+        relevantSpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
+
+      finalStickBaseline = enteredStick + alreadyDeductedStick;
+      finalPotBaseline = enteredPot + alreadyDeductedPot;
+      finalPlateBaseline = enteredPlate + alreadyDeductedPlate;
+    }
+
     const item: InventoryStock = {
-      id: 'global',
-      stickQuantity: Math.max(0, Number(inventoryData.stickQuantity) || 0),
-      potQuantity: Math.max(0, Number(inventoryData.potQuantity) || 0),
-      plateQuantity: Math.max(0, Number(inventoryData.plateQuantity) || 0),
+      id: inventory?.id || currentFranchiseId || 'global',
+      stickQuantity: finalStickBaseline,
+      potQuantity: finalPotBaseline,
+      plateQuantity: finalPlateBaseline,
       lastUpdatedDate: cleanDate,
       stickFlavours: inventoryData.stickFlavours,
       potFlavours: inventoryData.potFlavours,
@@ -497,7 +531,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
 
   const handleResetInventory = async () => {
     const item: InventoryStock = {
-      id: 'global',
+      id: inventory?.id || currentFranchiseId || 'global',
       stickQuantity: 0,
       potQuantity: 0,
       plateQuantity: 0,
@@ -513,27 +547,46 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     reloadInventory();
   };
 
-  // Add stock delivery batch
+  // Add stock delivery batch (top-up without double-deducting today's sales)
   const handleAddStockDelivery = async () => {
     const addedStick = Number(deliveryAddQuantity.stick) || 0;
     const addedPot = Number(deliveryAddQuantity.pot) || 0;
     const addedPlate = Number(deliveryAddQuantity.plate) || 0;
     if (addedStick === 0 && addedPot === 0 && addedPlate === 0) return;
 
-    // When new stock arrives, we top up the current available stock and update the baseline for today
-    const newStickBaseline = availableStick + addedStick;
-    const newPotBaseline = availablePot + addedPot;
-    const newPlateBaseline = availablePlate + addedPlate;
+    // Desired resulting live available stock after this incoming delivery:
+    const targetAvailStick = availableStick + addedStick;
+    const targetAvailPot = availablePot + addedPot;
+    const targetAvailPlate = availablePlate + addedPlate;
+
+    // Sales that already completed on or after today:
+    const relevantEntries = entries.filter(e => e.date >= todayStr);
+    const relevantSpecials = specialOrders.filter(s => s.date >= todayStr);
+
+    const alreadyDeductedStick = 
+      relevantEntries.reduce((sum, e) => sum + (e.stickSold || 0), 0) +
+      relevantSpecials.reduce((sum, s) => sum + (s.stickQuantity || 0), 0);
+    const alreadyDeductedPot = 
+      relevantEntries.reduce((sum, e) => sum + (e.potSold || 0), 0) +
+      relevantSpecials.reduce((sum, s) => sum + (s.potQuantity || 0), 0);
+    const alreadyDeductedPlate = 
+      relevantEntries.reduce((sum, e) => sum + (e.plateSold || 0), 0) +
+      relevantSpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
+
+    // Opening baseline for today = targetAvailable + sales already occurred today
+    const newStickBaseline = targetAvailStick + alreadyDeductedStick;
+    const newPotBaseline = targetAvailPot + alreadyDeductedPot;
+    const newPlateBaseline = targetAvailPlate + alreadyDeductedPlate;
 
     const item: InventoryStock = {
-      id: 'global',
+      id: inventory?.id || currentFranchiseId || 'global',
       stickQuantity: newStickBaseline,
       potQuantity: newPotBaseline,
       plateQuantity: newPlateBaseline,
       lastUpdatedDate: todayStr,
-      stickFlavours: inventory.stickFlavours || [],
-      potFlavours: inventory.potFlavours || [],
-      plateFlavours: inventory.plateFlavours || []
+      stickFlavours: inventory?.stickFlavours || [],
+      potFlavours: inventory?.potFlavours || [],
+      plateFlavours: inventory?.plateFlavours || []
     };
     await saveInventoryStock(item);
     setDeliveryAddQuantity({ stick: '', pot: '', plate: '' });
@@ -858,43 +911,76 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                   </div>
                 </div>
 
-                {/* Quick Presets */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={handleSetStockToday}
-                    className={`flex flex-col p-3 rounded-xl border transition-all cursor-pointer text-left ${
-                      inventoryData.lastUpdatedDate === todayStr && inventoryData.stickQuantity === availableStick
-                        ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20 ring-1 ring-cyan-500 text-cyan-900 dark:text-cyan-100'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold flex items-center gap-1.5 mb-1">
-                      <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
-                      Set to Today ({todayStr})
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      Live counts: {availableStick} sticks, {availablePot} pots{settings?.enablePlate ? `, ${availablePlate} plates` : ''}
-                    </div>
-                  </button>
+                {/* Quick Presets & Mode Selector */}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSetStockToday}
+                      className={`flex flex-col p-3 rounded-xl border transition-all cursor-pointer text-left ${
+                        inventoryData.lastUpdatedDate === todayStr && inventoryData.mode === 'current_physical'
+                          ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-950/20 ring-1 ring-cyan-500 text-cyan-900 dark:text-cyan-100'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold flex items-center gap-1.5 mb-1">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-500" />
+                        Set to Today's Count ({todayStr})
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Live: {availableStick} sticks, {availablePot} pots{settings?.enablePlate ? `, ${availablePlate} plates` : ''}
+                      </div>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleResetToRecordedBase}
-                    className={`flex flex-col p-3 rounded-xl border transition-all cursor-pointer text-left ${
-                      inventoryData.lastUpdatedDate === (inventory.lastUpdatedDate || '2026-08-01')
-                        ? 'border-slate-800 bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-800 dark:ring-slate-600 text-slate-900 dark:text-white'
-                        : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold flex items-center gap-1.5 mb-1">
-                      <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                      Restore Original
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      {inventory.lastUpdatedDate || '2026-08-01'} • {inventory.stickQuantity || 0} sticks
-                    </div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={handleResetToRecordedBase}
+                      className={`flex flex-col p-3 rounded-xl border transition-all cursor-pointer text-left ${
+                        inventoryData.mode === 'opening_baseline'
+                          ? 'border-slate-800 bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-800 dark:ring-slate-600 text-slate-900 dark:text-white'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold flex items-center gap-1.5 mb-1">
+                        <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                        Restore Original Baseline
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {inventory.lastUpdatedDate || '2026-08-01'} • {inventory.stickQuantity || 0} sticks
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Mode Selector */}
+                  <div className="p-1 bg-slate-100 dark:bg-slate-800 rounded-xl flex border border-slate-200 dark:border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setInventoryData(prev => ({ ...prev, mode: 'current_physical' }))}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        inventoryData.mode === 'current_physical'
+                          ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Current Physical Stock (Remaining Now)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInventoryData(prev => ({ ...prev, mode: 'opening_baseline' }))}
+                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        inventoryData.mode === 'opening_baseline'
+                          ? 'bg-white dark:bg-slate-900 text-cyan-600 dark:text-cyan-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Opening Baseline (Before Sales)
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 px-1">
+                    {inventoryData.mode === 'current_physical'
+                      ? '✓ Physical count mode: what you enter will directly become your available live stock right now. Prior sales today are preserved in the ledger and will NOT be deducted again.'
+                      : 'ℹ Baseline mode: what you enter is treated as the starting opening stock on that morning before sales began. Sales on or after that date will be subtracted.'}
+                  </p>
                 </div>
 
                 <div className="space-y-4 pt-2">
@@ -912,39 +998,39 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Stick Count
+                        {inventoryData.mode === 'current_physical' ? 'Physical Sticks in Shop' : 'Opening Stick Count'}
                       </Label>
                       <Input 
                         type="text" inputMode="numeric"
                         value={inventoryData.stickQuantity}
                         onChange={e => setInventoryData({...inventoryData, stickQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                         placeholder="0"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm font-bold"
                       />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        Pot Count
+                        {inventoryData.mode === 'current_physical' ? 'Physical Pots in Shop' : 'Opening Pot Count'}
                       </Label>
                       <Input 
                         type="text" inputMode="numeric"
                         value={inventoryData.potQuantity}
                         onChange={e => setInventoryData({...inventoryData, potQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                         placeholder="0"
-                        className="h-10 text-sm"
+                        className="h-10 text-sm font-bold"
                       />
                     </div>
                     {settings?.enablePlate && (
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          Plate Count
+                          {inventoryData.mode === 'current_physical' ? 'Physical Plates in Shop' : 'Opening Plate Count'}
                         </Label>
                         <Input 
                           type="text" inputMode="numeric"
                           value={inventoryData.plateQuantity}
                           onChange={e => setInventoryData({...inventoryData, plateQuantity: e.target.value === '' ? '' : Number(e.target.value)})}
                           placeholder="0"
-                          className="h-10 text-sm"
+                          className="h-10 text-sm font-bold"
                         />
                       </div>
                     )}
@@ -966,24 +1052,42 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                   const prevSpecialPlate = previewRelevantSpecials.reduce((sum, s) => sum + (s.plateQuantity || 0), 0);
                   const totalPrevPlateDeducted = prevPlateSold + prevSpecialPlate;
 
-                  const prevAvailStick = Math.max(0, (Number(inventoryData.stickQuantity) || 0) - totalPrevStickDeducted);
-                  const prevAvailPot = Math.max(0, (Number(inventoryData.potQuantity) || 0) - totalPrevPotDeducted);
-                  const prevAvailPlate = Math.max(0, (Number(inventoryData.plateQuantity) || 0) - totalPrevPlateDeducted);
+                  const enteredStick = Number(inventoryData.stickQuantity) || 0;
+                  const enteredPot = Number(inventoryData.potQuantity) || 0;
+                  const enteredPlate = Number(inventoryData.plateQuantity) || 0;
+
+                  const isPhysicalMode = inventoryData.mode === 'current_physical';
+                  const prevAvailStick = isPhysicalMode ? enteredStick : Math.max(0, enteredStick - totalPrevStickDeducted);
+                  const prevAvailPot = isPhysicalMode ? enteredPot : Math.max(0, enteredPot - totalPrevPotDeducted);
+                  const prevAvailPlate = isPhysicalMode ? enteredPlate : Math.max(0, enteredPlate - totalPrevPlateDeducted);
 
                   return (
                     <div className="bg-slate-100 dark:bg-slate-900/70 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
                       <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">
                         <Info className="w-3.5 h-3.5 text-pink-500" />
-                        Live Stock Calculation Preview
+                        Live Stock Result Preview
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
                         <div className="bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                           <span className="text-[9px] font-extrabold text-cyan-600 dark:text-cyan-400 uppercase block">Stick Kulfi</span>
                           <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1">
-                            Count: <span className="font-black text-slate-900 dark:text-white">{inventoryData.stickQuantity || 0}</span>
-                            <span className="text-red-500 mx-1">− {totalPrevStickDeducted} sold ({prevStickSold} cart + {prevSpecialStick} catering)</span>
+                            {isPhysicalMode ? (
+                              <>
+                                Physical count: <span className="font-black text-slate-900 dark:text-white">{enteredStick}</span>
+                                {totalPrevStickDeducted > 0 && (
+                                  <span className="text-slate-500 text-[10px] block mt-0.5">
+                                    ({totalPrevStickDeducted} sold today preserved in ledger)
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                Opening: <span className="font-black text-slate-900 dark:text-white">{enteredStick}</span>
+                                <span className="text-red-500 mx-1">− {totalPrevStickDeducted} sold</span>
+                              </>
+                            )}
                           </div>
-                          <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-1">
                             = {prevAvailStick} available
                           </div>
                         </div>
@@ -991,24 +1095,52 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                         <div className="bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
                           <span className="text-[9px] font-extrabold text-pink-600 dark:text-pink-400 uppercase block">Pot Kulfi</span>
                           <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1">
-                            Count: <span className="font-black text-slate-900 dark:text-white">{inventoryData.potQuantity || 0}</span>
-                            <span className="text-red-500 mx-1">− {totalPrevPotDeducted} sold</span>
+                            {isPhysicalMode ? (
+                              <>
+                                Physical count: <span className="font-black text-slate-900 dark:text-white">{enteredPot}</span>
+                                {totalPrevPotDeducted > 0 && (
+                                  <span className="text-slate-500 text-[10px] block mt-0.5">
+                                    ({totalPrevPotDeducted} sold today preserved in ledger)
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                Opening: <span className="font-black text-slate-900 dark:text-white">{enteredPot}</span>
+                                <span className="text-red-500 mx-1">− {totalPrevPotDeducted} sold</span>
+                              </>
+                            )}
                           </div>
-                          <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-1">
                             = {prevAvailPot} available
                           </div>
                         </div>
 
-                        <div className="bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
-                          <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 uppercase block">Plate Kulfi</span>
-                          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1">
-                            Count: <span className="font-black text-slate-900 dark:text-white">{inventoryData.plateQuantity || 0}</span>
-                            <span className="text-red-500 mx-1">− {totalPrevPlateDeducted} sold</span>
+                        {settings?.enablePlate && (
+                          <div className="bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 uppercase block">Plate Kulfi</span>
+                            <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1">
+                              {isPhysicalMode ? (
+                                <>
+                                  Physical count: <span className="font-black text-slate-900 dark:text-white">{enteredPlate}</span>
+                                  {totalPrevPlateDeducted > 0 && (
+                                    <span className="text-slate-500 text-[10px] block mt-0.5">
+                                      ({totalPrevPlateDeducted} sold today preserved)
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  Opening: <span className="font-black text-slate-900 dark:text-white">{enteredPlate}</span>
+                                  <span className="text-red-500 mx-1">− {totalPrevPlateDeducted} sold</span>
+                                </>
+                              )}
+                            </div>
+                            <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                              = {prevAvailPlate} available
+                            </div>
                           </div>
-                          <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                            = {prevAvailPlate} available
-                          </div>
-                        </div>
+                        )}
 
                       </div>
                     </div>

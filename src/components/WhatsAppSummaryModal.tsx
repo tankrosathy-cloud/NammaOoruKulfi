@@ -6,11 +6,15 @@ import { Button } from './ui/button';
 import { Copy, Check, Share2, MessageCircle, X, Sparkles } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 
+import { calculateAvailableStock } from '../lib/inventoryUtils';
+import { useEntries, useSpecialOrders } from '../store';
+
 export function generateWhatsAppClosingText(
   entry: DailyEntry,
   inventory?: InventoryStock | null,
   settings?: Settings | null,
-  franchiseName?: string
+  franchiseName?: string,
+  liveStock?: { availableStick: number; availablePot: number; availablePlate?: number }
 ): string {
   const stickPrice = settings?.stickPrice || 40;
   const potPrice = settings?.potPrice || 50;
@@ -33,10 +37,10 @@ export function generateWhatsAppClosingText(
   const cartExpenses = (entry.expenses || 0) + (entry.additionalExpenses || 0);
   const netSales = Math.max(0, (entry.actualAmount || 0) - (entry.cashBagLoaded || 0) + cartExpenses + (entry.bonus || 0));
 
-  // Available stock calculation
-  const stickStockRemaining = inventory?.stickQuantity !== undefined ? inventory.stickQuantity : null;
-  const potStockRemaining = inventory?.potQuantity !== undefined ? inventory.potQuantity : null;
-  const plateStockRemaining = inventory?.plateQuantity !== undefined ? inventory.plateQuantity : null;
+  // Available stock calculation - use accurate computed available stock if available
+  const stickStockRemaining = liveStock ? liveStock.availableStick : (inventory?.stickQuantity !== undefined ? inventory.stickQuantity : null);
+  const potStockRemaining = liveStock ? liveStock.availablePot : (inventory?.potQuantity !== undefined ? inventory.potQuantity : null);
+  const plateStockRemaining = liveStock ? (liveStock.availablePlate ?? 0) : (inventory?.plateQuantity !== undefined ? inventory.plateQuantity : null);
 
   const lines: string[] = [
     `🍦 *NAMMA OORU KULFI — DAILY CLOSING* 🍦`,
@@ -113,9 +117,16 @@ export function WhatsAppSummaryModal({ isOpen, onClose, entry, settings, invento
   const [copied, setCopied] = useState(false);
   const [customPhone, setCustomPhone] = useState('');
 
+  const { entries } = useEntries();
+  const { specialOrders } = useSpecialOrders();
+  const liveStock = React.useMemo(() => {
+    if (!inventory) return undefined;
+    return calculateAvailableStock(inventory, entries, specialOrders);
+  }, [inventory, entries, specialOrders]);
+
   if (!isOpen || !entry) return null;
 
-  const summaryText = generateWhatsAppClosingText(entry, inventory, settings, franchise?.name);
+  const summaryText = generateWhatsAppClosingText(entry, inventory, settings, franchise?.name, liveStock);
 
   const handleCopy = async () => {
     try {
