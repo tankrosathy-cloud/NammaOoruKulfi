@@ -20,7 +20,8 @@ import {
   useProfitWithdrawals, 
   useSpecialOrders, 
   useInventory, 
-  useSettings 
+  useSettings,
+  useQuickBills
 } from '../store';
 import { format } from 'date-fns';
 import { MonthlyFinancialStatement } from './MonthlyFinancialStatement';
@@ -43,6 +44,7 @@ export default function ExportData() {
   const { specialOrders } = useSpecialOrders();
   const { inventory } = useInventory();
   const { settings } = useSettings();
+  const { bills } = useQuickBills();
 
   const handlePrevMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
@@ -59,10 +61,11 @@ export default function ExportData() {
         profitWithdrawals,
         specialOrders,
         inventory,
+        bills,
         settings,
         targetMonth
       });
-      setSuccessMsg(`Downloaded ${filename} with all 6 section tabs!`);
+      setSuccessMsg(`Downloaded ${filename} with all tabs including Customer Bills & Phones!`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (error) {
       console.error("Export failed:", error);
@@ -78,10 +81,11 @@ export default function ExportData() {
       profitWithdrawals,
       specialOrders,
       inventory,
+      bills,
       settings,
       targetMonth
     });
-    setSuccessMsg(`Downloaded complete Master CSV for ${periodLabel}!`);
+    setSuccessMsg(`Downloaded complete Master CSV with customer phone numbers for ${periodLabel}!`);
     setTimeout(() => setSuccessMsg(null), 4000);
   };
 

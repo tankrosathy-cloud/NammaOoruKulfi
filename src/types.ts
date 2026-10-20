@@ -72,7 +72,52 @@ export interface Settings {
   monthlyGoal?: number;
   expensePaidByNames?: string[];
   expenseCategories?: string[];
+  // Digital Receipt & UPI / Google Review settings
+  upiId?: string;
+  upiName?: string;
+  googleReviewUrl?: string;
+  instagramUrl?: string;
+  storeTagline?: string;
+  storePhone?: string;
+  storeAddress?: string;
+  billPrefix?: string;
+  receiptNotes?: string;
+  autoSyncBillToEntry?: boolean;
 }
+
+export interface BillItem {
+  id: string;
+  name: string;
+  category: 'stick' | 'pot' | 'plate' | 'custom';
+  flavour?: string;
+  price: number;
+  quantity: number;
+  total: number;
+}
+
+export interface QuickBill {
+  id: string;
+  billNumber: string;
+  franchiseId?: string;
+  date: string; // YYYY-MM-DD
+  createdAt: string; // ISO
+  items: BillItem[];
+  subtotal: number;
+  discount: number;
+  platformFee: number;
+  totalAmount: number;
+  paymentMethod: 'upi' | 'cash' | 'split' | 'complimentary';
+  status: 'paid' | 'pending';
+  cashAmount?: number;
+  upiAmount?: number;
+  customerPhone?: string;
+  customerName?: string;
+  notes?: string;
+  syncedToDailyEntry?: boolean;
+  userId?: string;
+  updatedAt?: string;
+}
+
 
 export interface InventoryStock {
   franchiseId?: string;

@@ -1,7 +1,7 @@
 import { calculateDailyStockLedger } from './inventoryUtils';
 import * as XLSX from 'xlsx';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, InventoryStock, Settings } from '../types';
+import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, InventoryStock, Settings, QuickBill } from '../types';
 import { isDateInMonth } from './utils';
 
 export interface ExportDataOptions {
@@ -10,6 +10,7 @@ export interface ExportDataOptions {
   profitWithdrawals: ProfitWithdrawal[];
   specialOrders: SpecialOrder[];
   inventory: InventoryStock;
+  bills?: QuickBill[];
   settings?: Settings;
   targetMonth?: Date; // If undefined, exports all available records
   periodLabel?: string;
@@ -77,6 +78,7 @@ export function exportMultiTabWorkbook(options: ExportDataOptions) {
     profitWithdrawals,
     specialOrders,
     inventory,
+    bills = [],
     targetMonth
   } = options;
 
@@ -196,7 +198,31 @@ export function exportMultiTabWorkbook(options: ExportDataOptions) {
     'Notes & Purpose': p.notes || ''
   }));
 
-  // 6. Monthly Summary Sheet Data
+  // 6. Customer Bills & Phone Numbers Sheet Data
+  const filteredBills = (bills || [])
+    .filter(b => filterByMonth(b.date))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  const billRows = filteredBills.map(b => {
+    const itemsSummary = b.items?.map(i => `${i.name} x${i.quantity}`).join(', ') || '';
+    return {
+      'Bill Number': b.billNumber || b.id,
+      'Date': b.date,
+      'Customer Name': b.customerName || 'Walk-in',
+      'Customer Phone': b.customerPhone || '',
+      'Payment Method': b.paymentMethod ? b.paymentMethod.toUpperCase() : 'CASH',
+      'Items Count': b.items?.reduce((sum, i) => sum + i.quantity, 0) || 0,
+      'Items Detail': itemsSummary,
+      'Subtotal (₹)': b.subtotal || 0,
+      'Discount (₹)': b.discount || 0,
+      'Platform Fee (₹)': b.platformFee || 0,
+      'Total Amount (₹)': b.totalAmount || 0,
+      'Status': b.status || 'paid',
+      'Notes': b.notes || ''
+    };
+  });
+
+  // 7. Monthly Summary Sheet Data
   const totalDailyRevenue = salesRows.reduce((sum, r) => sum + r['Gross Sales Revenue (₹)'], 0);
   const totalEventRevenue = specialRows.reduce((sum, r) => sum + r['Amount Received (₹)'], 0);
   const totalCombinedRevenue = totalDailyRevenue + totalEventRevenue;
@@ -259,7 +285,11 @@ export function exportMultiTabWorkbook(options: ExportDataOptions) {
   const wsProfits = XLSX.utils.json_to_sheet(profitRows.length > 0 ? profitRows : [{ 'Date': 'No profit withdrawals recorded', 'Amount': 0 }]);
   XLSX.utils.book_append_sheet(wb, wsProfits, 'Profit Taken');
 
-  // Tab 6: Summary
+  // Tab 6: Customer Bills & Phones
+  const wsBills = XLSX.utils.json_to_sheet(billRows.length > 0 ? billRows : [{ 'Notice': 'No customer bills recorded', 'Customer Phone': '' }]);
+  XLSX.utils.book_append_sheet(wb, wsBills, 'Customer Bills & Phones');
+
+  // Tab 7: Summary
   const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
@@ -424,6 +454,7 @@ export function exportCombinedAllSectionsCSV(options: ExportDataOptions) {
     profitWithdrawals,
     specialOrders,
     inventory,
+    bills = [],
     targetMonth
   } = options;
 
@@ -560,6 +591,24 @@ export function exportCombinedAllSectionsCSV(options: ExportDataOptions) {
       p.date,
       p.amount || 0,
       `"${(p.notes || '').replace(/"/g, '""')}"`
+    ].join(','));
+  });
+  lines.push('');
+
+  // 6. CUSTOMER BILLS & PHONE NUMBERS SECTION
+  lines.push('=== SECTION 6: CUSTOMER BILLS & PHONE NUMBERS ===');
+  lines.push(['Bill Number', 'Date', 'Customer Name', 'Customer Phone', 'Payment Method', 'Total Amount', 'Status', 'Notes'].join(','));
+  const filteredBills = (bills || []).filter(b => filterByMonth(b.date)).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  filteredBills.forEach(b => {
+    lines.push([
+      b.billNumber || b.id,
+      b.date,
+      `"${(b.customerName || 'Walk-in').replace(/"/g, '""')}"`,
+      `"${(b.customerPhone || '').replace(/"/g, '""')}"`,
+      b.paymentMethod ? b.paymentMethod.toUpperCase() : 'CASH',
+      b.totalAmount || 0,
+      b.status || 'paid',
+      `"${(b.notes || '').replace(/"/g, '""')}"`
     ].join(','));
   });
 

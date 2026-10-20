@@ -2,7 +2,10 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { UserProfile, Franchise } from '../types';
-import { setCurrentFranchiseId } from '../store';
+import { setCurrentFranchiseId, ADMIN_USERNAMES } from '../store';
+
+export const SATHY_FRANCHISE_ID = 'F-1788087111153';
+export const SATHY_FRANCHISE_NAME = 'Namma Ooru Kulfi (Sathyamangalam)';
 
 interface FranchiseContextType {
   profile: UserProfile | null;
@@ -25,11 +28,34 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
-        // 1. Instant Cache Hydration - unlock UI immediately if cached credentials exist
+        const userEmail = (user.email || '').toLowerCase().trim();
+        const isSathyOwner = 
+          userEmail === 'nammaoorukulfisathy@gmail.com' ||
+          userEmail.includes('sathy') ||
+          userEmail.startsWith('tankrosathy') ||
+          ADMIN_USERNAMES.some(name => userEmail.startsWith(name) || userEmail === name);
+
+        // Predefined profile for the Sathyamangalam main store
+        const sathyProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email || 'nammaoorukulfisathy@gmail.com',
+          role: 'owner',
+          franchiseId: SATHY_FRANCHISE_ID
+        };
+
+        const sathyFranchise: Franchise = {
+          id: SATHY_FRANCHISE_ID,
+          name: SATHY_FRANCHISE_NAME,
+          ownerId: user.uid,
+          inviteCode: 'SATHY1',
+          createdAt: '2026-08-31T09:27:24.071Z'
+        };
+
+        // 1. Instant Cache or Auto-Detect Hydration - unlock UI immediately
         let hasCache = false;
         try {
-          const cachedPStr = localStorage.getItem(`namma_profile_${user.uid}`);
-          const cachedFStr = localStorage.getItem(`namma_franchise_${user.uid}`);
+          const cachedPStr = localStorage.getItem(`namma_profile_${user.uid}`) || localStorage.getItem('namma_last_profile');
+          const cachedFStr = localStorage.getItem(`namma_franchise_${user.uid}`) || localStorage.getItem('namma_last_franchise');
           if (cachedPStr) {
             const cachedP = JSON.parse(cachedPStr) as UserProfile;
             setProfile(cachedP);
@@ -42,6 +68,26 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch (e) {
           console.warn("Could not parse local franchise cache", e);
+        }
+
+        // If this is the known Sathyamangalam store owner/admin, unlock immediately without waiting for network!
+        if (isSathyOwner) {
+          setProfile(sathyProfile);
+          setFranchise(sathyFranchise);
+          setCurrentFranchiseId(SATHY_FRANCHISE_ID);
+          setLoading(false);
+          hasCache = true;
+        } else if (userEmail === 'superadmin@gmail.com') {
+          const superProfile: UserProfile = {
+            uid: user.uid,
+            email: user.email || 'superadmin@gmail.com',
+            role: 'superadmin',
+            franchiseId: ''
+          };
+          setProfile(superProfile);
+          setCurrentFranchiseId('all');
+          setLoading(false);
+          hasCache = true;
         }
 
         if (!hasCache) {
@@ -59,36 +105,119 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
         };
 
         try {
-          const profileDoc = await fetchWithTimeout(getDoc(doc(db, 'users', user.uid)));
-          if (profileDoc.exists()) {
-            const pData = profileDoc.data() as UserProfile;
-            setProfile(pData);
-            setCurrentFranchiseId(pData.franchiseId);
+          let resolvedProfile: UserProfile | null = null;
+          let resolvedFranchise: Franchise | null = null;
+
+          // Attempt 1: Fetch user profile by UID
+          try {
+            const profileDoc = await fetchWithTimeout(getDoc(doc(db, 'users', user.uid)));
+            if (profileDoc.exists()) {
+              resolvedProfile = profileDoc.data() as UserProfile;
+            }
+          } catch (e) {
+            console.warn("Direct user UID profile fetch skipped/failed:", e);
+          }
+
+          // Attempt 2: If profile not found by UID, search by email across users collection
+          if (!resolvedProfile && userEmail) {
             try {
-              localStorage.setItem(`namma_profile_${user.uid}`, JSON.stringify(pData));
+              const qEmail = query(collection(db, 'users'), where('email', '==', userEmail));
+              const emailSnap = await fetchWithTimeout(getDocs(qEmail), 3000);
+              if (!emailSnap.empty) {
+                const foundData = emailSnap.docs[0].data() as UserProfile;
+                resolvedProfile = { ...foundData, uid: user.uid };
+              } else if (user.email && user.email !== userEmail) {
+                const qEmailOrig = query(collection(db, 'users'), where('email', '==', user.email));
+                const emailSnap2 = await fetchWithTimeout(getDocs(qEmailOrig), 3000);
+                if (!emailSnap2.empty) {
+                  const foundData = emailSnap2.docs[0].data() as UserProfile;
+                  resolvedProfile = { ...foundData, uid: user.uid };
+                }
+              }
+            } catch (e) {
+              console.warn("User lookup by email skipped/failed:", e);
+            }
+          }
+
+          // Attempt 3: If user owns an existing franchise, recover ownership automatically
+          if (!resolvedProfile) {
+            try {
+              const qOwner = query(collection(db, 'franchises'), where('ownerId', '==', user.uid));
+              const ownerSnap = await fetchWithTimeout(getDocs(qOwner), 3000);
+              if (!ownerSnap.empty) {
+                const fData = ownerSnap.docs[0].data() as Franchise;
+                resolvedProfile = {
+                  uid: user.uid,
+                  email: user.email || '',
+                  role: 'owner',
+                  franchiseId: fData.id
+                };
+                resolvedFranchise = fData;
+              }
+            } catch (e) {
+              console.warn("Franchise owner check skipped/failed:", e);
+            }
+          }
+
+          // Attempt 4: If Sathy store admin/owner, apply Sathyamangalam profile and ensure cloud sync
+          if (!resolvedProfile && isSathyOwner) {
+            resolvedProfile = sathyProfile;
+            resolvedFranchise = sathyFranchise;
+          }
+
+          if (resolvedProfile) {
+            setProfile(resolvedProfile);
+            setCurrentFranchiseId(resolvedProfile.franchiseId);
+            try {
+              localStorage.setItem(`namma_profile_${user.uid}`, JSON.stringify(resolvedProfile));
+              localStorage.setItem('namma_last_profile', JSON.stringify(resolvedProfile));
             } catch {}
             window.dispatchEvent(new Event('franchiseChanged'));
 
-            if (pData.franchiseId) {
+            // Auto-persist profile doc in Firestore so future lookups are instant
+            try {
+              setDoc(doc(db, 'users', user.uid), resolvedProfile, { merge: true }).catch(() => {});
+            } catch {}
+
+            // Load associated franchise document
+            if (resolvedProfile.franchiseId && !resolvedFranchise) {
               try {
-                const fDoc = await fetchWithTimeout(getDoc(doc(db, 'franchises', pData.franchiseId)), 3000);
+                const fDoc = await fetchWithTimeout(getDoc(doc(db, 'franchises', resolvedProfile.franchiseId)), 3000);
                 if (fDoc.exists()) {
-                  const fData = fDoc.data() as Franchise;
-                  setFranchise(fData);
-                  try {
-                    localStorage.setItem(`namma_franchise_${user.uid}`, JSON.stringify(fData));
-                  } catch {}
+                  resolvedFranchise = fDoc.data() as Franchise;
+                } else if (resolvedProfile.franchiseId === SATHY_FRANCHISE_ID) {
+                  resolvedFranchise = sathyFranchise;
                 }
               } catch (fErr) {
-                console.warn('Franchise fetch timed out or offline, using cache if available');
+                console.warn('Franchise fetch timed out or offline, using fallback:', fErr);
+                if (resolvedProfile.franchiseId === SATHY_FRANCHISE_ID) {
+                  resolvedFranchise = sathyFranchise;
+                }
+              }
+            }
+
+            if (resolvedFranchise) {
+              setFranchise(resolvedFranchise);
+              try {
+                localStorage.setItem(`namma_franchise_${user.uid}`, JSON.stringify(resolvedFranchise));
+                localStorage.setItem('namma_last_franchise', JSON.stringify(resolvedFranchise));
+              } catch {}
+              // Ensure franchise is saved with current ownerId
+              if (resolvedProfile.role === 'owner') {
+                try {
+                  setDoc(doc(db, 'franchises', resolvedFranchise.id), {
+                    ...resolvedFranchise,
+                    ownerId: user.uid
+                  }, { merge: true }).catch(() => {});
+                } catch {}
               }
             }
           } else {
             // Handle superadmin special case
-            if (user.email === 'superadmin@gmail.com') {
+            if (userEmail === 'superadmin@gmail.com') {
               const superProfile: UserProfile = {
                 uid: user.uid,
-                email: user.email,
+                email: user.email || 'superadmin@gmail.com',
                 role: 'superadmin',
                 franchiseId: ''
               };
@@ -102,7 +231,12 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
             }
           }
         } catch (err) {
-          console.warn("User profile fetch timed out or error occurred; using cached or fallback profile:", err);
+          console.warn("User profile fetch error/timeout; using cached or fallback profile:", err);
+          if (isSathyOwner) {
+            setProfile(sathyProfile);
+            setFranchise(sathyFranchise);
+            setCurrentFranchiseId(SATHY_FRANCHISE_ID);
+          }
         } finally {
           setLoading(false);
         }

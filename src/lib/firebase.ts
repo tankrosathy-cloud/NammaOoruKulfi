@@ -1,8 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager, 
   getFirestore,
   Firestore 
 } from 'firebase/firestore';
@@ -11,21 +9,21 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId;
+
 let firestoreInstance: Firestore;
 try {
-  // Use persistent IndexedDB cache and auto-detect long polling to prevent
-  // mobile network / Android WebView streaming connection hangs (30-40s delays).
+  // Use long polling fallback to prevent WebView stream timeouts without triggering IDB assertion state bugs
   firestoreInstance = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-  });
+    experimentalAutoDetectLongPolling: true
+  }, firestoreDbId);
 } catch (e) {
-  firestoreInstance = getFirestore(app);
+  try {
+    firestoreInstance = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
+  } catch (err) {
+    firestoreInstance = getFirestore(app);
+  }
 }
 
 export const db = firestoreInstance;
 export const auth = getAuth(app);
-
-
-
-

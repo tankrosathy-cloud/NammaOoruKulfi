@@ -1,5 +1,5 @@
-import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
-import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord } from './types';
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef, useMemo } from 'react';
+import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord, QuickBill } from './types';
 import { db, auth } from './lib/firebase';
 import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -69,6 +69,15 @@ const DEFAULT_SETTINGS: Settings = {
   platePrice: 75,
   platformFee: 0,
   monthlyGoal: 150000,
+  upiId: 'nammaoorukulfi@oksbi',
+  upiName: 'Namma Ooru Kulfi',
+  googleReviewUrl: '',
+  instagramUrl: '',
+  storeTagline: '100% Traditional Malai & Pot Kulfi',
+  storePhone: '',
+  storeAddress: '',
+  billPrefix: 'NOK-',
+  autoSyncBillToEntry: true
 };
 
 const syncChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window ? new BroadcastChannel('nammaoorukulfi-realtime') : null;
@@ -135,7 +144,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
 
     for (const entry of INITIAL_AUGUST_ENTRIES) {
       if (force || !existingDates.has(entry.date)) {
-        await setDoc(doc(db, 'entries', entry.id), {
+        await safeSetDoc(doc(db, 'entries', entry.id), {
           ...entry,
           userId: user?.uid || 'anonymous',
           updatedAt: new Date().toISOString()
@@ -154,7 +163,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
     for (const exp of INITIAL_AUGUST_EXPENSES) {
       const sig = `${exp.date}-${exp.amount}-${exp.category}`;
       if (force || (!existingExpIds.has(exp.id) && !existingExpSignatures.has(sig))) {
-        await setDoc(doc(db, 'expenses', exp.id), {
+        await safeSetDoc(doc(db, 'expenses', exp.id), {
           ...exp,
           userId: user?.uid || 'anonymous',
           updatedAt: new Date().toISOString()
@@ -167,7 +176,7 @@ export async function seedAugustDataset(force: boolean = false): Promise<{ entri
     const existingSpecialIds = new Set(specialsSnap.docs.map(d => d.id));
     for (const order of INITIAL_AUGUST_SPECIAL_ORDERS) {
       if (force || !existingSpecialIds.has(order.id)) {
-        await setDoc(doc(db, 'specialOrders', order.id), {
+        await safeSetDoc(doc(db, 'specialOrders', order.id), {
           ...order,
           userId: user?.uid || 'anonymous',
           updatedAt: new Date().toISOString()
@@ -233,7 +242,7 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
   try {
     // 1. Write to dedicated Firestore collection 'daily_denominations' with franchise-scoped document ID
     const docId = (effectiveFid && effectiveFid !== 'NONE') ? `${effectiveFid}_${date}` : date;
-    await setDoc(doc(db, 'daily_denominations', docId), record, { merge: true });
+    await safeSetDoc(doc(db, 'daily_denominations', docId), record, { merge: true });
 
     // 2. Also update entry document if one exists for this date in Firestore
     if (!skipEntrySync) {
@@ -242,7 +251,7 @@ export async function saveDailyDenominations(date: string, denominations: Denomi
         const snap = await getDocs(q);
         if (!snap.empty) {
           const matching = snap.docs[0];
-          await setDoc(doc(db, 'entries', matching.id), {
+          await safeSetDoc(doc(db, 'entries', matching.id), {
             denominations,
             updatedAt: new Date().toISOString()
           }, { merge: true });
@@ -278,7 +287,7 @@ export async function saveEntry(entry: DailyEntry): Promise<void> {
     if (isSupabaseConfigured()) {
       promises.push(upsertEntryToSupabase(entryWithUser, user?.uid || ''));
     } else {
-      promises.push(setDoc(doc(db, 'entries', entry.id), entryWithUser));
+      promises.push(safeSetDoc(doc(db, 'entries', entry.id), entryWithUser));
     }
 
     // Sync denominations to daily_denominations collection if present
@@ -334,69 +343,206 @@ export async function deleteEntry(id: string): Promise<void> {
   }
 }
 
-export async function getSettings(): Promise<Settings> {
-  if (isSupabaseConfigured()) {
-    const supabaseSettings = await fetchSettingsFromSupabase();
-    if (supabaseSettings) return supabaseSettings;
-  }
+export async function getSettings(targetFid?: string | null): Promise<Settings> {
+  const fid = targetFid || currentFranchiseId || 'global';
+  const targetDocId = (fid === 'all' || !fid) ? 'global' : fid;
 
+  let merged: Settings = DEFAULT_SETTINGS;
+
+  // 1. Try reading from Firestore (contains full digital receipt, UPI & Google review settings)
   try {
-    const docRef = doc(db, 'settings', currentFranchiseId || 'global');
+    const docRef = doc(db, 'settings', targetDocId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      const data = docSnap.data() as Settings;
-      return data;
+      merged = { ...DEFAULT_SETTINGS, ...(docSnap.data() as Settings) };
+    } else if (targetDocId !== 'global') {
+      const globalSnap = await getDoc(doc(db, 'settings', 'global'));
+      if (globalSnap.exists()) {
+        merged = { ...DEFAULT_SETTINGS, ...(globalSnap.data() as Settings) };
+      }
     }
   } catch (error) {
-    console.error("Error fetching settings:", error);
+    console.warn("Firestore getSettings fallback:", error);
   }
 
-  return DEFAULT_SETTINGS;
+  // 2. If Supabase is configured, overlay relational prices & monthly goal
+  if (isSupabaseConfigured()) {
+    try {
+      const supabaseSettings = await fetchSettingsFromSupabase();
+      if (supabaseSettings) {
+        merged = {
+          ...merged,
+          stickPrice: supabaseSettings.stickPrice || merged.stickPrice,
+          potPrice: supabaseSettings.potPrice || merged.potPrice,
+          platePrice: supabaseSettings.platePrice || merged.platePrice,
+          monthlyGoal: supabaseSettings.monthlyGoal || merged.monthlyGoal,
+          enableStick: supabaseSettings.enableStick ?? merged.enableStick,
+          enablePot: supabaseSettings.enablePot ?? merged.enablePot,
+          enablePlate: supabaseSettings.enablePlate ?? merged.enablePlate,
+          enablePlatformFee: supabaseSettings.enablePlatformFee ?? merged.enablePlatformFee,
+          platformFee: supabaseSettings.platformFee ?? merged.platformFee,
+          expensePaidByNames: supabaseSettings.expensePaidByNames || merged.expensePaidByNames,
+          expenseCategories: supabaseSettings.expenseCategories || merged.expenseCategories,
+        };
+      }
+    } catch (e) {
+      console.warn("Supabase fetchSettings fallback warning:", e);
+    }
+  }
+
+  return merged;
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
+export async function saveSettings(settings: Settings, targetFid?: string | null): Promise<void> {
   triggerWriteStart();
-  try {
-    if (isSupabaseConfigured()) {
-      await upsertSettingsToSupabase(settings);
-    } else {
-      await setDoc(doc(db, 'settings', currentFranchiseId || 'global'), settings);
-    }
+  const fid = targetFid || currentFranchiseId || 'global';
+  const targetDocId = (fid === 'all' || !fid || fid === 'NONE') ? 'global' : fid;
 
-    triggerDataUpdated('settings', 'global');
+  // Defensive serialization: Remove undefined properties to prevent Firestore serialization errors
+  const cleanSettings: any = {};
+  Object.entries(settings).forEach(([key, val]) => {
+    if (val !== undefined) {
+      cleanSettings[key] = val;
+    }
+  });
+  cleanSettings.franchiseId = targetDocId;
+  cleanSettings.updatedAt = new Date().toISOString();
+
+  // 1. Instant local storage cache update for instantaneous zero-lag UI
+  try {
+    localStorage.setItem(`kulfi_cache_settings_${targetDocId}`, JSON.stringify(cleanSettings));
+    localStorage.setItem('kulfi_cache_settings_global', JSON.stringify(cleanSettings));
+    if (currentFranchiseId && currentFranchiseId !== 'all' && currentFranchiseId !== 'NONE') {
+      localStorage.setItem(`kulfi_cache_settings_${currentFranchiseId}`, JSON.stringify(cleanSettings));
+    }
+  } catch {}
+
+  // 2. ALWAYS save to Firestore: this guarantees QR codes, review URLs, and UPI VPAs are persistent
+  try {
+    await safeSetDoc(doc(db, 'settings', targetDocId), cleanSettings, { merge: true });
+    if (targetDocId !== 'global') {
+      // Also update global fallback doc so superadmin & defaults share latest config
+      await safeSetDoc(doc(db, 'settings', 'global'), cleanSettings, { merge: true });
+    }
   } catch (error) {
-    console.error("Error saving settings:", error);
+    console.error("Firestore saveSettings error:", error);
     throw error;
   }
+
+  // 3. Sync pricing and targets to Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      await upsertSettingsToSupabase(cleanSettings);
+    } catch (supErr) {
+      console.warn("Supabase saveSettings notice:", supErr);
+    }
+  }
+
+  await addLog('UPDATE_SETTINGS', 'Updated store settings & digital receipt config');
+  triggerDataUpdated('settings', targetDocId);
 }
 
-const DEFAULT_INVENTORY: InventoryStock = {
+// Master list of Stick Kulfi flavours in the exact official sequence requested
+export const MASTER_STICK_FLAVOURS = [
+  'Mango malai',
+  'Kesar Badam',
+  'Malai',
+  'Kesar pista',
+  'Chocolate',
+  'Pista badam',
+  'Shahi gulab',
+  'Black current',
+  'Strawberry',
+  'Dry fruit',
+  'Coconut',
+  'Gulkand',
+  'Blue berry',
+  'Kesar kajoor',
+  'Guava',
+] as const;
+
+// Master list of Pot Kulfi flavours in the exact official sequence requested
+export const MASTER_POT_FLAVOURS = [
+  'Badam',
+  'Pista',
+  'Pistabadam',
+  'Shahi gulab',
+] as const;
+
+// Helper to normalize flavour names for robust case/spacing/alias-insensitive matching
+export function normalizeFlavourKey(name: string): string {
+  let cleaned = (name || '').toLowerCase().replace(/[\s\-_]+/g, '').trim();
+  cleaned = cleaned.replace(/pistha/g, 'pista');
+  cleaned = cleaned.replace(/khajoor/g, 'kajoor');
+  cleaned = cleaned.replace(/blackcurrant/g, 'blackcurrent');
+  return cleaned;
+}
+
+// Arranges any incoming flavours according to the master sequence, preserving recorded stock
+export function arrangeFlavoursInSequence(
+  existingFlavours: { name: string; quantity: number }[] | undefined,
+  masterList: readonly string[]
+): { name: string; quantity: number }[] {
+  const existingMap = new Map<string, number>();
+  (existingFlavours || []).forEach(f => {
+    if (f && f.name) {
+      existingMap.set(normalizeFlavourKey(f.name), f.quantity || 0);
+    }
+  });
+
+  // 1. Arrange master flavours in exact official sequence
+  const result: { name: string; quantity: number }[] = masterList.map(name => {
+    const key = normalizeFlavourKey(name);
+    return {
+      name,
+      quantity: existingMap.get(key) ?? 0
+    };
+  });
+
+  // 2. Append any additional custom flavours not in master list
+  (existingFlavours || []).forEach(f => {
+    if (f && f.name) {
+      const key = normalizeFlavourKey(f.name);
+      if (!masterList.some(m => normalizeFlavourKey(m) === key)) {
+        result.push(f);
+      }
+    }
+  });
+
+  return result;
+}
+
+export const DEFAULT_INVENTORY: InventoryStock = {
   id: 'global',
   stickQuantity: 0,
   potQuantity: 0,
   lastUpdatedDate: new Date().toISOString().split('T')[0],
-  stickFlavours: [
-    { name: 'Pista badam', quantity: 0 }
-  ],
-  potFlavours: [
-    { name: 'Badam', quantity: 0 },
-    { name: 'Pistha', quantity: 0 },
-    { name: 'Pistha badam', quantity: 0 },
-    { name: 'Shahi gulab', quantity: 0 }
-  ]
+  stickFlavours: MASTER_STICK_FLAVOURS.map(name => ({ name, quantity: 0 })),
+  potFlavours: MASTER_POT_FLAVOURS.map(name => ({ name, quantity: 0 }))
 };
 
 export async function getInventoryStock(): Promise<InventoryStock> {
   if (isSupabaseConfigured()) {
     const supabaseInv = await fetchInventoryFromSupabase();
-    if (supabaseInv) return supabaseInv;
+    if (supabaseInv) {
+      return {
+        ...supabaseInv,
+        stickFlavours: arrangeFlavoursInSequence(supabaseInv.stickFlavours, MASTER_STICK_FLAVOURS),
+        potFlavours: arrangeFlavoursInSequence(supabaseInv.potFlavours, MASTER_POT_FLAVOURS)
+      };
+    }
   }
 
   try {
     const docRef = doc(db, 'inventory', currentFranchiseId || 'global');
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data() as InventoryStock;
+      const data = docSnap.data() as InventoryStock;
+      return {
+        ...data,
+        stickFlavours: arrangeFlavoursInSequence(data.stickFlavours, MASTER_STICK_FLAVOURS),
+        potFlavours: arrangeFlavoursInSequence(data.potFlavours, MASTER_POT_FLAVOURS)
+      };
     }
   } catch (error) {
     console.error("Error fetching inventory stock:", error);
@@ -408,19 +554,23 @@ export async function getInventoryStock(): Promise<InventoryStock> {
 export async function saveInventoryStock(item: InventoryStock): Promise<void> {
   const user = auth.currentUser;
   triggerWriteStart();
+  const orderedSticks = arrangeFlavoursInSequence(item.stickFlavours, MASTER_STICK_FLAVOURS);
+  const orderedPots = arrangeFlavoursInSequence(item.potFlavours, MASTER_POT_FLAVOURS);
   const itemWithUser = {
     ...item,
     id: item.id || currentFranchiseId || 'global',
     franchiseId: item.franchiseId || currentFranchiseId || 'NONE',
     userId: user?.uid || item.userId || '',
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    stickFlavours: orderedSticks,
+    potFlavours: orderedPots
   };
 
   try {
     if (isSupabaseConfigured()) {
       await upsertInventoryToSupabase(itemWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'inventory', currentFranchiseId || 'global'), itemWithUser);
+      await safeSetDoc(doc(db, 'inventory', currentFranchiseId || 'global'), itemWithUser);
     }
 
     triggerDataUpdated('inventory', 'global');
@@ -465,7 +615,7 @@ export async function saveExpense(expense: ExpenseEntry): Promise<void> {
     if (isSupabaseConfigured()) {
       await upsertExpenseToSupabase(expenseWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'expenses', expense.id), expenseWithUser);
+      await safeSetDoc(doc(db, 'expenses', expense.id), expenseWithUser);
     }
 
     await addLog('SAVE_EXPENSE', `Saved expense for ₹${expense.amount} by ${expense.paidBy} on ${expense.date}`);
@@ -523,7 +673,7 @@ export async function saveProfitWithdrawal(withdrawal: ProfitWithdrawal): Promis
     if (isSupabaseConfigured()) {
       await upsertProfitWithdrawalToSupabase(withdrawalWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'profitWithdrawals', withdrawal.id), withdrawalWithUser);
+      await safeSetDoc(doc(db, 'profitWithdrawals', withdrawal.id), withdrawalWithUser);
     }
 
     await addLog('SAVE_PROFIT_WITHDRAWAL', `Logged profit taken: ₹${withdrawal.amount} on ${withdrawal.date}`);
@@ -581,7 +731,7 @@ export async function saveSpecialOrder(order: SpecialOrder, _currentInventory?: 
     if (isSupabaseConfigured()) {
       await upsertSpecialOrderToSupabase(orderWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'specialOrders', order.id), orderWithUser);
+      await safeSetDoc(doc(db, 'specialOrders', order.id), orderWithUser);
     }
 
     await addLog('SAVE_SPECIAL_ORDER', `Special Order (${order.eventType}) on ${order.date}: ₹${order.amountReceived}`);
@@ -606,7 +756,7 @@ export async function updateSpecialOrder(_oldOrder: SpecialOrder, newOrder: Spec
     if (isSupabaseConfigured()) {
       await upsertSpecialOrderToSupabase(orderWithUser, user?.uid || '');
     } else {
-      await setDoc(doc(db, 'specialOrders', newOrder.id), orderWithUser);
+      await safeSetDoc(doc(db, 'specialOrders', newOrder.id), orderWithUser);
     }
 
     await addLog('UPDATE_SPECIAL_ORDER', `Updated special order for ${newOrder.eventType}`);
@@ -641,6 +791,171 @@ export async function deleteSpecialOrder(order: SpecialOrder, _currentInventory?
   }
 }
 
+// Helper to remove any undefined fields before sending to Firestore
+export function sanitizeForFirestore<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore) as unknown as T;
+  const cleaned: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = (obj as any)[key];
+    if (val !== undefined) {
+      cleaned[key] = sanitizeForFirestore(val);
+    }
+  }
+  return cleaned;
+}
+
+export async function safeSetDoc(docRef: any, data: any, options?: any) {
+  const cleaned = sanitizeForFirestore(data);
+  if (options) {
+    return await setDoc(docRef, cleaned, options);
+  } else {
+    return await setDoc(docRef, cleaned);
+  }
+}
+
+export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = true): Promise<void> {
+  const user = auth.currentUser;
+  triggerWriteStart();
+  const billWithUser: QuickBill = {
+    ...bill,
+    franchiseId: bill.franchiseId || currentFranchiseId || 'NONE',
+    userId: user?.uid || bill.userId || '',
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    await setDoc(doc(db, 'bills', bill.id), sanitizeForFirestore(billWithUser));
+
+    if (autoSyncToEntry) {
+      try {
+        const q = buildFranchiseQuery(db, 'entries', billWithUser.franchiseId, where('date', '==', bill.date));
+        const snap = await getDocs(q);
+
+        const stickQty = bill.items.filter(i => i.category === 'stick').reduce((sum, i) => sum + i.quantity, 0);
+        const potQty = bill.items.filter(i => i.category === 'pot').reduce((sum, i) => sum + i.quantity, 0);
+        const plateQty = bill.items.filter(i => i.category === 'plate').reduce((sum, i) => sum + i.quantity, 0);
+
+        let cashAdd = 0;
+        let upiAdd = 0;
+        if (bill.paymentMethod === 'upi') {
+          upiAdd = bill.totalAmount;
+        } else if (bill.paymentMethod === 'cash') {
+          cashAdd = bill.totalAmount;
+        } else if (bill.paymentMethod === 'split') {
+          cashAdd = bill.cashAmount || 0;
+          upiAdd = bill.upiAmount || 0;
+        }
+
+        let currentSettings: Settings = DEFAULT_SETTINGS;
+        try {
+          const cached = localStorage.getItem(`kulfi_cache_settings_${currentFranchiseId || 'global'}`) || localStorage.getItem('kulfi_cache_settings_global');
+          if (cached) currentSettings = JSON.parse(cached);
+        } catch {}
+        const stickPrice = currentSettings.stickPrice || 40;
+        const potPrice = currentSettings.potPrice || 50;
+        const platePrice = currentSettings.platePrice || 75;
+
+        if (!snap.empty) {
+          const matchingDoc = snap.docs[0];
+          const existingEntry = matchingDoc.data() as DailyEntry;
+          const updatedStickSold = (existingEntry.stickSold || 0) + stickQty;
+          const updatedPotSold = (existingEntry.potSold || 0) + potQty;
+          const updatedPlateSold = (existingEntry.plateSold || 0) + plateQty;
+          const updatedPhonePe = (existingEntry.phonePe || 0) + upiAdd;
+          const updatedCashBagTotal = (existingEntry.cashBagTotal || 0) + cashAdd;
+          const updatedActualAmount = updatedCashBagTotal + updatedPhonePe;
+          
+          const updatedRequired = (updatedStickSold * stickPrice) + 
+                                  (updatedPotSold * potPrice) + 
+                                  (updatedPlateSold * platePrice);
+
+          const shortage = Math.max(0, updatedRequired - updatedActualAmount);
+          const bonus = Math.max(0, updatedActualAmount - updatedRequired);
+
+          await safeSetDoc(doc(db, 'entries', matchingDoc.id), {
+            ...existingEntry,
+            stickSold: updatedStickSold,
+            potSold: updatedPotSold,
+            plateSold: updatedPlateSold,
+            phonePe: updatedPhonePe,
+            cashBagTotal: updatedCashBagTotal,
+            actualAmount: updatedActualAmount,
+            requiredAmount: updatedRequired,
+            shortage,
+            bonus,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } else {
+          const newEntryId = `entry_${bill.date}_${billWithUser.franchiseId || 'default'}`;
+          const initialRequired = (stickQty * stickPrice) + (potQty * potPrice) + (plateQty * platePrice);
+          const initialActual = cashAdd + upiAdd;
+          const initialShortage = Math.max(0, initialRequired - initialActual);
+          const initialBonus = Math.max(0, initialActual - initialRequired);
+
+          const newEntry: DailyEntry = {
+            id: newEntryId,
+            date: bill.date,
+            franchiseId: billWithUser.franchiseId,
+            stickLoaded: stickQty,
+            stickSold: stickQty,
+            stickBalance: 0,
+            potLoaded: potQty,
+            potSold: potQty,
+            potBalance: 0,
+            plateLoaded: plateQty,
+            plateSold: plateQty,
+            plateBalance: 0,
+            cashBagLoaded: 0,
+            cashBagTotal: cashAdd,
+            phonePe: upiAdd,
+            discount: bill.discount || 0,
+            requiredAmount: initialRequired,
+            actualAmount: initialActual,
+            shortage: initialShortage,
+            bonus: initialBonus,
+            finalAmount: initialActual,
+            expenses: 0,
+            notes: `Auto-created from POS Bill #${bill.billNumber}`,
+            userId: user?.uid || '',
+            updatedAt: new Date().toISOString()
+          };
+          await safeSetDoc(doc(db, 'entries', newEntryId), newEntry);
+        }
+      } catch (syncErr) {
+        console.warn("Could not auto-sync bill to daily entry:", syncErr);
+      }
+    }
+
+    triggerDataUpdated('bills', bill.id);
+  } catch (error) {
+    console.error("Error saving quick bill:", error);
+    throw error;
+  }
+}
+
+export async function deleteQuickBill(id: string): Promise<void> {
+  triggerWriteStart();
+  try {
+    const docRef = doc(db, 'bills', id);
+    try {
+      const snap = await getDoc(docRef);
+      let billNumber = id;
+      if (snap.exists()) {
+        const data = snap.data() as QuickBill;
+        billNumber = data.billNumber || id;
+      }
+      await deleteDoc(docRef);
+      await addLog('DELETE_BILL', `Deleted Bill #${billNumber}`);
+    } catch (dbErr) {
+      console.warn("Firestore delete bill warning (proceeding with local removal):", dbErr);
+    }
+    triggerDataUpdated('bills', id);
+  } catch (error) {
+    console.error("Error deleting quick bill:", error);
+  }
+}
+
 // React Hooks & Context
 
 export interface StoreState {
@@ -660,6 +975,8 @@ export interface StoreState {
   profitWithdrawalsLoading: boolean;
   specialOrders: SpecialOrder[];
   specialOrdersLoading: boolean;
+  bills: QuickBill[];
+  billsLoading: boolean;
   dailyDenominationsMap: Record<string, DailyDenominationsRecord>;
   refreshAllFromServer: () => Promise<void>;
   isSyncing: boolean;
@@ -702,7 +1019,15 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
   const [inventory, setInventory] = useState<InventoryStock>(() => {
     try {
       const cached = localStorage.getItem(`kulfi_cache_inventory_${cacheKeySuffix}`);
-      return cached ? JSON.parse(cached) : DEFAULT_INVENTORY;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return {
+          ...parsed,
+          stickFlavours: arrangeFlavoursInSequence(parsed.stickFlavours, MASTER_STICK_FLAVOURS),
+          potFlavours: arrangeFlavoursInSequence(parsed.potFlavours, MASTER_POT_FLAVOURS)
+        };
+      }
+      return DEFAULT_INVENTORY;
     } catch {
       return DEFAULT_INVENTORY;
     }
@@ -741,11 +1066,30 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
   });
   const [specialOrdersLoading, setSpecialOrdersLoading] = useState(false);
 
+  const [bills, setBills] = useState<QuickBill[]>(() => {
+    try {
+      const cached = localStorage.getItem(`kulfi_cache_bills_${cacheKeySuffix}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [billsLoading, setBillsLoading] = useState(false);
+
   const [dailyDenominationsMap, setDailyDenominationsMap] = useState<Record<string, DailyDenominationsRecord>>({});
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
   const isRefreshingRef = useRef(false);
+  const lastAutoRefreshRef = useRef(0);
+  const [currentUser, setCurrentUser] = useState(() => auth.currentUser);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setCurrentUser(u);
+    });
+    return () => unsub();
+  }, []);
 
   const refreshAllFromServer = useCallback(async () => {
     if (isRefreshingRef.current) return;
@@ -835,15 +1179,58 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
 
         setDailyDenominationsMap(dMap);
 
-        if (supSettings) {
-          setSettings(supSettings);
-          try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(supSettings)); } catch {}
+        // Fetch Firestore settings so digital receipt, UPI, and review QR configurations are preserved
+        let mergedSettings: Settings = { ...DEFAULT_SETTINGS, ...settings };
+        try {
+          const cached = localStorage.getItem(`kulfi_cache_settings_${cacheKeySuffix}`) || localStorage.getItem('kulfi_cache_settings_global');
+          if (cached) {
+            mergedSettings = { ...mergedSettings, ...JSON.parse(cached) };
+          }
+        } catch {}
+
+        const targetSettingsDocId = (activeFid && activeFid !== 'all' && activeFid !== 'NONE') ? activeFid : 'global';
+        try {
+          const fsDoc = await withTimeout(getDoc(doc(db, 'settings', targetSettingsDocId)), 3500);
+          if (fsDoc && fsDoc.exists()) {
+            mergedSettings = { ...mergedSettings, ...(fsDoc.data() as Settings) };
+          } else if (targetSettingsDocId !== 'global') {
+            const globalDoc = await withTimeout(getDoc(doc(db, 'settings', 'global')), 2500);
+            if (globalDoc && globalDoc.exists()) {
+              mergedSettings = { ...mergedSettings, ...(globalDoc.data() as Settings) };
+            }
+          }
+        } catch (e) {
+          console.warn("Firestore settings read in Supabase mode warning:", e);
         }
+
+        if (supSettings) {
+          mergedSettings = {
+            ...mergedSettings,
+            stickPrice: supSettings.stickPrice || mergedSettings.stickPrice,
+            potPrice: supSettings.potPrice || mergedSettings.potPrice,
+            platePrice: supSettings.platePrice || mergedSettings.platePrice,
+            monthlyGoal: supSettings.monthlyGoal || mergedSettings.monthlyGoal,
+            enableStick: supSettings.enableStick ?? mergedSettings.enableStick,
+            enablePot: supSettings.enablePot ?? mergedSettings.enablePot,
+            enablePlate: supSettings.enablePlate ?? mergedSettings.enablePlate,
+            enablePlatformFee: supSettings.enablePlatformFee ?? mergedSettings.enablePlatformFee,
+            platformFee: supSettings.platformFee ?? mergedSettings.platformFee,
+            expensePaidByNames: supSettings.expensePaidByNames || mergedSettings.expensePaidByNames,
+            expenseCategories: supSettings.expenseCategories || mergedSettings.expenseCategories,
+          };
+        }
+        setSettings(mergedSettings);
+        try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(mergedSettings)); } catch {}
         setSettingsLoading(false);
 
         if (supInventory) {
-          setInventory(supInventory);
-          try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(supInventory)); } catch {}
+          const arrangedInventory: InventoryStock = {
+            ...supInventory,
+            stickFlavours: arrangeFlavoursInSequence(supInventory.stickFlavours, MASTER_STICK_FLAVOURS),
+            potFlavours: arrangeFlavoursInSequence(supInventory.potFlavours, MASTER_POT_FLAVOURS)
+          };
+          setInventory(arrangedInventory);
+          try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(arrangedInventory)); } catch {}
         }
         setInventoryLoading(false);
 
@@ -885,6 +1272,20 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
           setSpecialOrdersLoading(false);
         }
 
+        // POS Bills are always stored in Firestore, so fetch them seamlessly here as well
+        try {
+          const billsSnap = await withTimeout(getDocs(buildFranchiseQuery(db, 'bills', activeFid)), 3500);
+          if (billsSnap) {
+            const docs = billsSnap.docs.map(d => ({ ...d.data(), id: d.id } as QuickBill));
+            const sorted = docs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+            setBills(sorted);
+            try { localStorage.setItem(`kulfi_cache_bills_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+          }
+        } catch (bErr) {
+          console.warn("Could not fetch bills in Supabase mode:", bErr);
+        }
+        setBillsLoading(false);
+
         setLastSynced(new Date());
         return;
       }
@@ -913,15 +1314,17 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         expensesSnap,
         profitsSnap,
         specialsSnap,
-        denomsSnap
+        denomsSnap,
+        billsSnap
       ] = await Promise.all([
         fetchCollection('entries'),
-        fetchDocument('settings', activeFid || 'global'),
-        fetchDocument('inventory', activeFid || 'global'),
+        fetchDocument('settings', (activeFid && activeFid !== 'all' && activeFid !== 'NONE') ? activeFid : 'global'),
+        fetchDocument('inventory', (activeFid && activeFid !== 'all' && activeFid !== 'NONE') ? activeFid : 'global'),
         fetchCollection('expenses'),
         fetchCollection('profitWithdrawals'),
         fetchCollection('specialOrders'),
-        fetchCollection('daily_denominations')
+        fetchCollection('daily_denominations'),
+        fetchCollection('bills')
       ]);
 
       const dMap: Record<string, DailyDenominationsRecord> = {};
@@ -949,13 +1352,27 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         const data = settingsSnap.data() as Settings;
         setSettings(data);
         try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
-      } else if (settingsSnap) {
-        setSettings(DEFAULT_SETTINGS);
+      } else {
+        try {
+          const cached = localStorage.getItem(`kulfi_cache_settings_${cacheKeySuffix}`) || localStorage.getItem('kulfi_cache_settings_global');
+          if (cached) {
+            setSettings(JSON.parse(cached));
+          } else {
+            setSettings(DEFAULT_SETTINGS);
+          }
+        } catch {
+          setSettings(DEFAULT_SETTINGS);
+        }
       }
       setSettingsLoading(false);
 
       if (inventorySnap && inventorySnap.exists()) {
-        const data = inventorySnap.data() as InventoryStock;
+        const rawData = inventorySnap.data() as InventoryStock;
+        const data: InventoryStock = {
+          ...rawData,
+          stickFlavours: arrangeFlavoursInSequence(rawData.stickFlavours, MASTER_STICK_FLAVOURS),
+          potFlavours: arrangeFlavoursInSequence(rawData.potFlavours, MASTER_POT_FLAVOURS)
+        };
         setInventory(data);
         try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
       } else if (inventorySnap) {
@@ -993,6 +1410,16 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         setSpecialOrdersLoading(false);
       }
 
+      if (billsSnap) {
+        const docs = billsSnap.docs.map(d => ({ ...d.data(), id: d.id } as QuickBill));
+        const sorted = docs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setBills(sorted);
+        try { localStorage.setItem(`kulfi_cache_bills_${cacheKeySuffix}`, JSON.stringify(sorted)); } catch {}
+        setBillsLoading(false);
+      } else {
+        setBillsLoading(false);
+      }
+
       setLastSynced(new Date());
     } catch (err) {
       console.warn("Database sync refresh warning:", err);
@@ -1002,6 +1429,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       setExpensesLoading(false);
       setProfitWithdrawalsLoading(false);
       setSpecialOrdersLoading(false);
+      setBillsLoading(false);
     } finally {
       setIsSyncing(false);
       isRefreshingRef.current = false;
@@ -1009,8 +1437,15 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
   }, [activeFid, cacheKeySuffix]);
 
   useEffect(() => {
-    console.log('StoreProvider useEffect, currentFranchiseId:', currentFranchiseId);
     let unsubs: Array<() => void> = [];
+
+    const throttledRefresh = () => {
+      const now = Date.now();
+      if (now - lastAutoRefreshRef.current > 30000) {
+        lastAutoRefreshRef.current = now;
+        refreshAllFromServer();
+      }
+    };
 
     // 1. Supabase Realtime Listener if configured
     if (isSupabaseConfigured()) {
@@ -1020,7 +1455,7 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
           const channel = supabase
             .channel('nammaoorukulfi-realtime')
             .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-              refreshAllFromServer();
+              throttledRefresh();
             })
             .subscribe();
 
@@ -1138,13 +1573,56 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       } catch (e) {
         console.warn("Could not bind specials snapshot:", e);
       }
+
+    }
+
+    // 2. UNIVERSAL LISTENERS: Bills, Settings & Daily Denominations
+    // These must ALWAYS be listened to via Firestore in both Supabase & Firestore modes
+    try {
+      const unsubBills = onSnapshot(
+        buildFranchiseQuery(db, 'bills', activeFid, limit(100)),
+        (snapshot) => {
+          const docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as QuickBill));
+          setBills(docs.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+          setBillsLoading(false);
+        },
+        (err) => {
+          console.warn("Realtime bills listener warning:", err);
+          setBillsLoading(false);
+        }
+      );
+      unsubs.push(unsubBills);
+    } catch (e) {
+      console.warn("Could not bind bills snapshot:", e);
+    }
+
+    const targetSettingsDocId = (activeFid && activeFid !== 'all' && activeFid !== 'NONE') ? activeFid : 'global';
+    try {
+      const unsubSettings = onSnapshot(
+        doc(db, 'settings', targetSettingsDocId),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const fsData = docSnap.data() as Settings;
+            setSettings(prev => ({
+              ...prev,
+              ...fsData
+            }));
+            try { localStorage.setItem(`kulfi_cache_settings_${cacheKeySuffix}`, JSON.stringify(fsData)); } catch {}
+          }
+          setSettingsLoading(false);
+        },
+        (err) => console.error("Realtime settings listener error:", err)
+      );
+      unsubs.push(unsubSettings);
+    } catch (e) {
+      console.warn("Could not bind settings snapshot:", e);
     }
 
     // Always attach the daily_denominations listener regardless of Supabase config
     // This allows real-time keystroke draft syncing across all clients via Firebase.
     try {
       const unsubDenoms = onSnapshot(
-        buildFranchiseQuery(db, 'daily_denominations', activeFid),
+        buildFranchiseQuery(db, 'daily_denominations', activeFid, limit(60)),
         (snapshot) => {
           const dMap: Record<string, DailyDenominationsRecord> = {};
           snapshot.docs.forEach(docSnap => {
@@ -1162,22 +1640,28 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       console.warn("Could not bind daily_denominations snapshot globally:", e);
     }
 
-    refreshAllFromServer();
+    // Only run manual REST refresh if Supabase is enabled.
+    // In pure Firestore mode, onSnapshot listeners above stream all real-time updates directly,
+    // avoiding duplicate reads that burn the free daily quota.
+    if (isSupabaseConfigured()) {
+      refreshAllFromServer();
+    }
 
-    let lastAutoRefresh = 0;
-    const throttledRefresh = () => {
-      const now = Date.now();
-      if (now - lastAutoRefresh > 8000) {
-        lastAutoRefresh = now;
+    let debounceTimer: any = null;
+    const handleDataUpdated = (e: any) => {
+      // In Firestore mode, onSnapshot listeners already update documents in real time.
+      if (!isSupabaseConfigured()) return;
+      const type = e?.detail?.type;
+      if (type === 'logs' || type === 'settings' || type === 'bills') return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
         refreshAllFromServer();
-      }
+      }, 1000);
     };
 
-    const handleDataUpdated = () => refreshAllFromServer();
-
-    window.addEventListener('focus', throttledRefresh);
     const handleVisibilityChange = () => {
-      if (!document.hidden) throttledRefresh();
+      if (!document.hidden && isSupabaseConfigured()) throttledRefresh();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('app-data-updated', handleDataUpdated);
@@ -1188,33 +1672,49 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
     }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       unsubs.forEach(u => {
         try { u(); } catch {}
       });
-      window.removeEventListener('focus', throttledRefresh);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('app-data-updated', handleDataUpdated);
       window.removeEventListener('franchiseChanged', handleDataUpdated);
     };
-  }, [activeFid, entriesLimit, expensesLimit, refreshAllFromServer]);
+  }, [activeFid, currentUser, entriesLimit, expensesLimit]);
 
   const loadMoreEntries = () => setEntriesLimit(prev => prev + 100);
   const loadMoreExpenses = () => setExpensesLimit(prev => prev + 100);
 
+  const contextValue = useMemo(() => ({
+    entries, entriesLoading, loadMoreEntries, hasMoreEntries,
+    settings, settingsLoading,
+    inventory, inventoryLoading,
+    expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses,
+    profitWithdrawals, profitWithdrawalsLoading,
+    specialOrders, specialOrdersLoading,
+    bills, billsLoading,
+    dailyDenominationsMap,
+    refreshAllFromServer,
+    isSyncing,
+    lastSynced,
+    databaseType
+  }), [
+    entries, entriesLoading, hasMoreEntries,
+    settings, settingsLoading,
+    inventory, inventoryLoading,
+    expenses, expensesLoading, hasMoreExpenses,
+    profitWithdrawals, profitWithdrawalsLoading,
+    specialOrders, specialOrdersLoading,
+    bills, billsLoading,
+    dailyDenominationsMap,
+    refreshAllFromServer,
+    isSyncing,
+    lastSynced,
+    databaseType
+  ]);
+
   return (
-    <StoreContext.Provider value={{
-      entries, entriesLoading, loadMoreEntries, hasMoreEntries,
-      settings, settingsLoading,
-      inventory, inventoryLoading,
-      expenses, expensesLoading, loadMoreExpenses, hasMoreExpenses,
-      profitWithdrawals, profitWithdrawalsLoading,
-      specialOrders, specialOrdersLoading,
-      dailyDenominationsMap,
-      refreshAllFromServer,
-      isSyncing,
-      lastSynced,
-      databaseType
-    }}>
+    <StoreContext.Provider value={contextValue}>
       {children}
     </StoreContext.Provider>
   );
@@ -1303,6 +1803,18 @@ export function useSpecialOrders() {
   };
 }
 
+export function useQuickBills() {
+  const ctx = useContext(StoreContext);
+  if (!ctx) throw new Error("useQuickBills must be used within StoreProvider");
+  return { 
+    bills: ctx.bills, 
+    loading: ctx.billsLoading,
+    saveBill: saveQuickBill,
+    deleteBill: deleteQuickBill,
+    reload: ctx.refreshAllFromServer
+  };
+}
+
 export function useSync() {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error("useSync must be used within StoreProvider");
@@ -1379,7 +1891,7 @@ export function useLogs(limitCount: number = 100) {
         }
       }, (error) => {
         console.warn("Realtime logs snapshot with order warning:", error);
-        const fallbackUnsub = onSnapshot(logsColl, (snapshot) => {
+        const fallbackUnsub = onSnapshot(query(logsColl, limit(limitCount)), (snapshot) => {
           let docs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AppLog));
           if (currentFranchiseId && currentFranchiseId !== 'all') {
             docs = docs.filter(l => !l.franchiseId || l.franchiseId === currentFranchiseId || l.franchiseId === 'global');
@@ -1437,7 +1949,7 @@ export async function addLog(action: string, details: string, deletedPayload?: a
     await insertLogToSupabase(log);
   } else {
     try {
-      await setDoc(doc(db, 'logs', log.id), log);
+      await safeSetDoc(doc(db, 'logs', log.id), log);
     } catch (error) {
       console.warn("Firestore addLog error:", error);
     }
@@ -1476,7 +1988,7 @@ export async function revokeDeletedRecord(log: AppLog): Promise<void> {
     if (isSupabaseConfigured()) {
       await insertLogToSupabase(updatedLog);
     } else {
-      await setDoc(doc(db, 'logs', log.id), updatedLog);
+      await safeSetDoc(doc(db, 'logs', log.id), updatedLog);
     }
   } catch (error) {
     console.error("Error revoking deleted record:", error);

@@ -45,7 +45,9 @@ export default function App() {
     return <Login />;
   }
 
-  if (user.email === 'superadmin@gmail.com') {
+  const userEmail = (user.email || '').toLowerCase().trim();
+
+  if (userEmail === 'superadmin@gmail.com') {
     return (
       <div className={`min-h-screen transition-colors duration-300 ${
         isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'

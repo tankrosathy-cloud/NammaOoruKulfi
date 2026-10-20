@@ -191,7 +191,7 @@ export function WhatsAppSummaryModal({ isOpen, onClose, entry, settings, invento
                 </span>
               </div>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
-                Formatted daily report for Yuvaraj, Sebastin & team
+                Formatted daily report for Yuvaraj, Nadeem & team
               </p>
             </div>
           </div>

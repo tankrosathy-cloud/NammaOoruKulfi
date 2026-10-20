@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings, useDailyDenominations, getDenomsStorageKey } from '../store';
+import { useEntries, deleteEntry, useExpenses, deleteExpense, useProfitWithdrawals, saveProfitWithdrawal, deleteProfitWithdrawal, useSpecialOrders, saveSpecialOrder, deleteSpecialOrder, updateSpecialOrder, useInventory, useSettings, useDailyDenominations, getDenomsStorageKey, useQuickBills } from '../store';
 import { Card, CardContent } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -63,6 +63,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   
   const { specialOrders } = useSpecialOrders();
   const { inventory } = useInventory();
+  const { bills } = useQuickBills();
   const [showSpecialModal, setShowSpecialModal] = useState(false);
   const [specialDeleteConfirmId, setSpecialDeleteConfirmId] = useState<string | null>(null);
   const [specialForm, setSpecialForm] = useState({ eventType: 'Event', stickQuantity: '', potQuantity: '', plateQuantity: '', amountReceived: '', notes: '', date: format(new Date(), 'yyyy-MM-dd') });
@@ -1882,6 +1883,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
           profitWithdrawals={profitWithdrawals}
           specialOrders={specialOrders}
           inventory={inventory}
+          bills={bills}
           settings={settings}
           currentDate={currentDate}
         />

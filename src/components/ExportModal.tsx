@@ -17,7 +17,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, InventoryStock, Settings } from '../types';
+import { DailyEntry, ExpenseEntry, ProfitWithdrawal, SpecialOrder, InventoryStock, Settings, QuickBill } from '../types';
 import { 
   exportMultiTabWorkbook, 
   exportSingleSectionCSV, 
@@ -34,6 +34,7 @@ interface ExportModalProps {
   profitWithdrawals: ProfitWithdrawal[];
   specialOrders: SpecialOrder[];
   inventory: InventoryStock;
+  bills?: QuickBill[];
   settings?: Settings;
   currentDate: Date;
 }
@@ -46,6 +47,7 @@ export default function ExportModal({
   profitWithdrawals,
   specialOrders,
   inventory,
+  bills = [],
   settings,
   currentDate
 }: ExportModalProps) {
@@ -67,10 +69,11 @@ export default function ExportModal({
       profitWithdrawals,
       specialOrders,
       inventory,
+      bills,
       settings,
       targetMonth
     });
-    setDownloadSuccess(`Downloaded ${filename} with all 6 section tabs!`);
+    setDownloadSuccess(`Downloaded ${filename} with all tabs including Customer Bills & Phones!`);
     setTimeout(() => setDownloadSuccess(null), 4000);
   };
 
@@ -81,10 +84,11 @@ export default function ExportModal({
       profitWithdrawals,
       specialOrders,
       inventory,
+      bills,
       settings,
       targetMonth
     });
-    setDownloadSuccess(`Downloaded complete Master CSV for ${periodLabel}!`);
+    setDownloadSuccess(`Downloaded complete Master CSV with customer phone numbers for ${periodLabel}!`);
     setTimeout(() => setDownloadSuccess(null), 4000);
   };
 

@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders } from '../store';
+import { useEntries, useSettings, useExpenses, useInventory, useSpecialOrders, useQuickBills } from '../store';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { formatCurrency, isDateInMonth } from '../lib/utils';
-import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X, MessageCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, AlertCircle, BarChart3, PieChart as PieIcon, Activity, Sparkles, Sun, CloudRain, PartyPopper, Calendar, Bell, X, MessageCircle, QrCode } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { useWeather } from '../lib/useWeather';
 import { calculatePrediction } from '../lib/prediction';
@@ -35,7 +35,13 @@ const itemVariants = {
 };
 
 
-export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (date: string) => void }) {
+export default function Dashboard({ 
+  onNavigateToEntry,
+  onOpenQuickBill
+}: { 
+  onNavigateToEntry?: (date: string) => void;
+  onOpenQuickBill?: () => void;
+}) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [activeDayView, setActiveDayView] = useState<'today' | 'latest'>('today');
@@ -43,6 +49,7 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
   const { expenses, loading: expensesLoading } = useExpenses();
   const { specialOrders } = useSpecialOrders();
   const { inventory, loading: inventoryLoading } = useInventory();
+  const { bills } = useQuickBills();
   const loading = entriesLoading || expensesLoading || inventoryLoading;
   const { settings } = useSettings();
   const { theme } = useTheme();
@@ -68,6 +75,8 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
   }, [autoWeather, userOverrodeWeather]);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayBills = useMemo(() => bills.filter(b => b.date === todayStr), [bills, todayStr]);
+  const todayPOSSales = useMemo(() => todayBills.reduce((sum, b) => sum + (b.totalAmount || 0), 0), [todayBills]);
   
   const stats = useMemo(() => {
     const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
@@ -299,6 +308,56 @@ export default function Dashboard({ onNavigateToEntry }: { onNavigateToEntry?: (
             </div>
           </div>
         )}
+      </motion.div>
+
+      {/* ⚡ Quick POS Bill & Google Review QR Banner */}
+      <motion.div variants={itemVariants}>
+        <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+          isDark 
+            ? 'bg-gradient-to-r from-pink-950/40 via-slate-900 to-cyan-950/40 border-pink-500/30 shadow-lg shadow-pink-950/20' 
+            : 'bg-gradient-to-r from-pink-50 via-white to-cyan-50 border-pink-200 shadow-md shadow-pink-100/60'
+        } flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center font-black text-2xl shadow-md shadow-pink-500/25 shrink-0">
+              ⚡
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm sm:text-base font-black tracking-tight text-slate-950 dark:text-white uppercase">
+                  Quick Digital Receipt & Google Review QR
+                </h3>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30">
+                  Speed Counter
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-0.5">
+                Generate dynamic UPI payment QRs, instant digital invoices & collect 5-star Google reviews.
+              </p>
+              <div className="flex items-center gap-3 text-[11px] font-bold text-slate-500 mt-1 flex-wrap">
+                <span>Today's Counter Bills: <strong className="text-slate-900 dark:text-white font-mono">{todayBills.length}</strong></span>
+                <span>•</span>
+                <span>Today's Collection: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">₹{todayPOSSales}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="open-quick-pos-dashboard-btn"
+              onClick={() => {
+                if (onOpenQuickBill) {
+                  onOpenQuickBill();
+                } else {
+                  window.dispatchEvent(new CustomEvent('open-quick-pos'));
+                }
+              }}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-pink-500/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition-all"
+            >
+              <span>⚡ Open Quick Bill & QR</span>
+            </button>
+          </div>
+        </div>
       </motion.div>
 
       {latest && (

@@ -37,23 +37,26 @@ import {
   AlertTriangle,
   Layers,
   FileSpreadsheet,
+  Receipt,
   Check,
   HelpCircle,
   PhoneCall,
   Mail,
   MessageCircle,
-  UserCheck
+  UserCheck,
+  ListOrdered
 } from 'lucide-react';
 import { format, parseISO, addDays, subDays, isToday as isTodayDate, startOfMonth, endOfMonth } from 'date-fns';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
-import { InventoryStock, UserProfile } from '../types';
+import { InventoryStock, UserProfile, Settings } from '../types';
 import Planner from './Planner';
 import ExportData from '../components/ExportData';
 import MigrateLocalData from '../components/MigrateLocalData';
 import SupabaseManager from '../components/SupabaseManager';
+import FlavourStockSheet from '../components/FlavourStockSheet';
 import { calculateAvailableStock, calculateDailyStockLedger, DayStockLedgerRow } from '../lib/inventoryUtils';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
@@ -120,9 +123,20 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     platformFee: '',
     expensePaidByNames: '',
     expenseCategories: '',
+    upiId: '',
+    upiName: '',
+    googleReviewUrl: '',
+    instagramUrl: '',
+    storeTagline: '',
+    storePhone: '',
+    storeAddress: '',
+    billPrefix: '',
+    autoSyncBillToEntry: true,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
+  const [settingsErrorMsg, setSettingsErrorMsg] = useState('');
+  const isSettingsDirty = useRef(false);
 
     const [profileName, setProfileName] = useState(profile?.name || '');
   const [profilePhone, setProfilePhone] = useState(profile?.phone || '');
@@ -259,7 +273,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   };
 
   useEffect(() => {
-    if (!settingsLoading) {
+    if (!settingsLoading && !isSettingsDirty.current && settings) {
       setSettingsData({
         enableStick: settings.enableStick ?? true,
         enablePot: settings.enablePot ?? true,
@@ -272,11 +286,21 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
         monthlyGoal: (settings.monthlyGoal || 150000).toString(),
         expensePaidByNames: (settings.expensePaidByNames || ['Owner', 'Manager', 'Staff']).join(', '),
         expenseCategories: (settings.expenseCategories || ['Petrol/Fuel', 'Food', 'Maintenance', 'Salary', 'Supplies', 'Rent', 'Chit', 'Inventory', 'Others']).join(', '),
+        upiId: settings.upiId !== undefined ? settings.upiId : 'nammaoorukulfi@oksbi',
+        upiName: settings.upiName !== undefined ? settings.upiName : 'Namma Ooru Kulfi',
+        googleReviewUrl: settings.googleReviewUrl || '',
+        instagramUrl: settings.instagramUrl || '',
+        storeTagline: settings.storeTagline !== undefined ? settings.storeTagline : '100% Traditional Malai & Pot Kulfi',
+        storePhone: settings.storePhone || '',
+        storeAddress: settings.storeAddress || '',
+        billPrefix: settings.billPrefix || 'NOK-',
+        autoSyncBillToEntry: settings.autoSyncBillToEntry ?? true,
       });
     }
   }, [settings, settingsLoading]);
 
-    const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    isSettingsDirty.current = true;
     const { name, value, type, checked } = e.target;
     setSettingsData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
@@ -284,33 +308,68 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const handleSettingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingSettings(true);
-    await saveSettings({
-      ...settings,
-      enableStick: settingsData.enableStick,
-      enablePot: settingsData.enablePot,
-      enablePlate: settingsData.enablePlate,
-      enablePlatformFee: settingsData.enablePlatformFee,
-      stickPrice: parseFloat(settingsData.stickPrice) || 40,
-      potPrice: parseFloat(settingsData.potPrice) || 50,
-      platePrice: parseFloat(settingsData.platePrice) || 75,
-      platformFee: parseFloat(settingsData.platformFee) || 0,
-      monthlyGoal: parseFloat(settingsData.monthlyGoal) || 150000,
-      expensePaidByNames: settingsData.expensePaidByNames.split(',').map(s => s.trim()).filter(Boolean),
-      expenseCategories: settingsData.expenseCategories.split(',').map(s => s.trim()).filter(Boolean),
-    });
-    setSavingSettings(false);
-    reloadSettings();
-    
-    // Scroll to top to show success message
-    const mainContainer = document.querySelector('main');
-    if (mainContainer) {
-      mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSettingsErrorMsg('');
+    try {
+      let formattedReviewUrl = (settingsData.googleReviewUrl || '').trim();
+      if (formattedReviewUrl && !formattedReviewUrl.startsWith('http://') && !formattedReviewUrl.startsWith('https://')) {
+        formattedReviewUrl = 'https://' + formattedReviewUrl;
+      }
+
+      let formattedInstaUrl = (settingsData.instagramUrl || '').trim();
+      if (formattedInstaUrl && !formattedInstaUrl.startsWith('http://') && !formattedInstaUrl.startsWith('https://')) {
+        formattedInstaUrl = 'https://' + formattedInstaUrl;
+      }
+
+      const updatedPayload: Settings = {
+        ...settings,
+        enableStick: settingsData.enableStick,
+        enablePot: settingsData.enablePot,
+        enablePlate: settingsData.enablePlate,
+        enablePlatformFee: settingsData.enablePlatformFee,
+        stickPrice: parseFloat(settingsData.stickPrice) || 40,
+        potPrice: parseFloat(settingsData.potPrice) || 50,
+        platePrice: parseFloat(settingsData.platePrice) || 75,
+        platformFee: parseFloat(settingsData.platformFee) || 0,
+        monthlyGoal: parseFloat(settingsData.monthlyGoal) || 150000,
+        expensePaidByNames: settingsData.expensePaidByNames.split(',').map(s => s.trim()).filter(Boolean),
+        expenseCategories: settingsData.expenseCategories.split(',').map(s => s.trim()).filter(Boolean),
+        upiId: (settingsData.upiId || '').trim(),
+        upiName: (settingsData.upiName || '').trim(),
+        googleReviewUrl: formattedReviewUrl,
+        instagramUrl: formattedInstaUrl,
+        storeTagline: (settingsData.storeTagline || '').trim(),
+        storePhone: (settingsData.storePhone || '').trim(),
+        storeAddress: (settingsData.storeAddress || '').trim(),
+        billPrefix: (settingsData.billPrefix || '').trim() || 'NOK-',
+        autoSyncBillToEntry: settingsData.autoSyncBillToEntry,
+      };
+
+      const targetFid = franchise?.id || profile?.franchiseId || null;
+      await saveSettings(updatedPayload, targetFid);
+
+      setSettingsData(prev => ({
+        ...prev,
+        googleReviewUrl: formattedReviewUrl,
+        instagramUrl: formattedInstaUrl
+      }));
+
+      isSettingsDirty.current = false;
+      setSuccessMsg(true);
+      setTimeout(() => setSuccessMsg(false), 3500);
+
+      // Scroll to top to show success message
+      const mainContainer = document.querySelector('main');
+      if (mainContainer) {
+        mainContainer.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (err: any) {
+      console.error("Error saving settings:", err);
+      setSettingsErrorMsg(err?.message || "Failed to save settings. Please retry.");
+    } finally {
+      setSavingSettings(false);
     }
-    
-    setSuccessMsg(true);
-    setTimeout(() => setSuccessMsg(false), 3000);
   };
 
   // Inventory State
@@ -320,7 +379,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [selectedInventoryDate, setSelectedInventoryDate] = useState<string>(todayStr);
-  const [stockSubView, setStockSubView] = useState<'10day' | 'inspector'>('10day');
+  const [stockSubView, setStockSubView] = useState<'flavours' | '10day' | 'inspector'>('flavours');
   const [historyRangeDays, setHistoryRangeDays] = useState<number>(10);
   const [isEditingInventory, setIsEditingInventory] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -760,8 +819,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
 
       {/* Main Top-Level Navigation Tabs */}
       <div className="flex flex-col gap-2">
-        {/* Top Row: Settings, Planner, Stock, Export */}
-        <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800">
+        {/* Top Row: Settings, Planner, Stock */}
+        <div className={`grid ${role === 'owner' ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
           {role === 'owner' && (
             <button
               onClick={() => setActiveTab('settings')}
@@ -782,10 +841,30 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
           )}
           <button
             onClick={() => setActiveTab('inventory')}
-            className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'inventory' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'} ${role !== 'owner' ? 'col-span-4' : ''}`}
+            className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'inventory' ? 'bg-pink-500 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
           >
             <Package className="w-3.5 h-3.5 shrink-0" />
             <span>Stock</span>
+          </button>
+          {role !== 'owner' && (
+            <button
+              onClick={() => setActiveTab('receiptSetup')}
+              className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'receiptSetup' ? 'bg-pink-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+            >
+              <Receipt className="w-3.5 h-3.5 shrink-0" />
+              <span>Digital Receipt</span>
+            </button>
+          )}
+        </div>
+
+        {/* Bottom Row: Franchise, Export, Help, and Database (Superadmin only) */}
+        <div className={`grid ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
+          <button
+            onClick={() => setActiveTab('franchise')}
+            className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'franchise' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+          >
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            <span>Franchise</span>
           </button>
           {role === 'owner' && (
             <button
@@ -796,17 +875,6 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
               <span>Export</span>
             </button>
           )}
-        </div>
-
-        {/* Bottom Row: Franchise, Help, and Database (Superadmin only) */}
-        <div className={`grid ${isSuperAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
-          <button
-            onClick={() => setActiveTab('franchise')}
-            className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'franchise' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
-          >
-            <Layers className="w-3.5 h-3.5 shrink-0" />
-            <span>Franchise</span>
-          </button>
           <button
             onClick={() => setActiveTab('help')}
             className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'help' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
@@ -862,7 +930,18 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
             </div>
 
             {!isEditingInventory && role === 'owner' && (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => setStockSubView('flavours')}
+                  variant={stockSubView === 'flavours' ? 'default' : 'outline'}
+                  className={`font-bold rounded-xl h-10 px-3.5 text-xs sm:text-sm shadow-sm transition-all ${
+                    stockSubView === 'flavours'
+                      ? 'bg-pink-600 hover:bg-pink-700 text-white'
+                      : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <ListOrdered className="w-4 h-4 mr-1.5 text-pink-500" /> Flavour Sheet
+                </Button>
                 <Button
                   onClick={() => setShowDeliveryModal(true)}
                   className="bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-xl h-10 px-4 text-sm shadow-sm transition-all"
@@ -1164,10 +1243,21 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
               )}
 
           {/* Sub Navigation for Stock Views */}
-          <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setStockSubView('flavours')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 min-w-[150px] ${
+                stockSubView === 'flavours'
+                  ? 'bg-pink-500 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              <ListOrdered className="w-3.5 h-3.5 shrink-0" />
+              <span>Flavour Stock Sheet (15 Sticks • 4 Pots)</span>
+            </button>
             <button
               onClick={() => setStockSubView('10day')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 min-w-[140px] ${
                 stockSubView === '10day'
                   ? 'bg-pink-500 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -1178,7 +1268,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
             </button>
             <button
               onClick={() => setStockSubView('inspector')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 min-w-[120px] ${
                 stockSubView === 'inspector'
                   ? 'bg-pink-500 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
@@ -1825,6 +1915,17 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
             </div>
           )}
 
+          {/* ========================================================================= */}
+          {/* 3. VIEW: FLAVOUR STOCK SHEET (15 STICKS • 4 POTS) */}
+          {/* ========================================================================= */}
+          {stockSubView === 'flavours' && (
+            <FlavourStockSheet 
+              inventory={inventory} 
+              settings={settings} 
+              onSaved={reloadInventory} 
+            />
+          )}
+
           {/* Delivery Addition Modal */}
           {showDeliveryModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -2148,12 +2249,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                   </div>
                   <div className="space-y-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl">
                     <div className="flex items-center justify-between">
-                      <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Enable Platform Fee</Label>
+                      <div>
+                        <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest block">Daily Cart Stall Rent / Platform Rent</Label>
+                        <p className="text-[10px] text-slate-400 mt-0.5">For daily accounts closing only; customer bills are never surcharged</p>
+                      </div>
                       <input type="checkbox" name="enablePlatformFee" checked={settingsData.enablePlatformFee} onChange={handleSettingsChange} className="w-4 h-4 rounded border-slate-300" />
                     </div>
                     {settingsData.enablePlatformFee && (
                       <div className="space-y-2">
-                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fee Amount (₹/day)</Label>
+                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Daily Rent (₹/day)</Label>
                         <Input name="platformFee" type="text" inputMode="numeric" value={settingsData.platformFee} onChange={handleSettingsChange} className="h-11" />
                       </div>
                     )}
@@ -2167,6 +2271,70 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                 <div className="space-y-2 mt-4">
                   <Label className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Expense Categories (Comma separated)</Label>
                   <Input name="expenseCategories" type="text" value={settingsData.expenseCategories} onChange={handleSettingsChange} required className="border-emerald-200 dark:border-emerald-900/50 focus-visible:ring-emerald-500 h-11" placeholder="Petrol, Food, Rent..." />
+                </div>
+
+                {/* Quick Digital Receipt & Google Review QR Setup */}
+                <h3 className="text-xs font-black uppercase tracking-widest border-b border-slate-100 dark:border-slate-800/60 pb-4 text-pink-600 dark:text-pink-400 mt-8 mb-4 flex items-center gap-2">
+                  <span className="text-base">📱</span> Quick Digital Receipt & Google Review QR Setup
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Store / Cart Tagline</Label>
+                    <Input name="storeTagline" type="text" value={settingsData.storeTagline} onChange={handleSettingsChange} className="h-11" placeholder="100% Traditional Malai & Pot Kulfi" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Bill Number Prefix</Label>
+                    <Input name="billPrefix" type="text" value={settingsData.billPrefix} onChange={handleSettingsChange} className="h-11" placeholder="NOK-" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">UPI ID (VPA for Dynamic QR)</Label>
+                    <Input name="upiId" type="text" value={settingsData.upiId} onChange={handleSettingsChange} className="h-11 font-mono" placeholder="nammaoorukulfi@oksbi" />
+                    <p className="text-[10px] text-slate-500 font-medium">Customer scans this dynamic QR to pay exact bill via GPay/PhonePe/Paytm</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">UPI Payee / Merchant Name</Label>
+                    <Input name="upiName" type="text" value={settingsData.upiName} onChange={handleSettingsChange} className="h-11" placeholder="Namma Ooru Kulfi" />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                      ⭐ Google Maps Review URL
+                    </Label>
+                    <Input name="googleReviewUrl" type="text" value={settingsData.googleReviewUrl} onChange={handleSettingsChange} className="h-11" placeholder="https://maps.app.goo.gl/... or https://g.page/r/.../review" />
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Creates a Google 5-Star Review QR code on every customer bill + 1-tap WhatsApp review invite link.
+                    </p>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="text-[10px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-widest flex items-center gap-1">
+                      📸 Instagram Profile / Page URL
+                    </Label>
+                    <Input name="instagramUrl" type="text" value={settingsData.instagramUrl} onChange={handleSettingsChange} className="h-11" placeholder="https://instagram.com/nammaoorukulfi" />
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      Adds an Instagram follow link & "For best offers follow our Insta page!" promotion to customer WhatsApp bills and digital receipts.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Cart Location / Address</Label>
+                    <Input name="storeAddress" type="text" value={settingsData.storeAddress} onChange={handleSettingsChange} className="h-11" placeholder="Opposite Bus Stand, Sathyamangalam" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Customer Support Phone</Label>
+                    <Input name="storePhone" type="text" value={settingsData.storePhone} onChange={handleSettingsChange} className="h-11" placeholder="+91 98765 43210" />
+                  </div>
+                  <div className="md:col-span-2 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black uppercase text-slate-900 dark:text-white block">Auto-Sync POS Bills to Live Inventory & Daily Sales</span>
+                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">Automatically deduct sticks & pots from live warehouse stock and credit cash/UPI totals into today's reconciliation.</p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      name="autoSyncBillToEntry" 
+                      checked={settingsData.autoSyncBillToEntry} 
+                      onChange={handleSettingsChange} 
+                      className="w-5 h-5 rounded border-slate-300 text-pink-600 focus:ring-pink-500 cursor-pointer" 
+                    />
+                  </div>
                 </div>
 
 
@@ -2287,6 +2455,77 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
           <ExportData />
           <MigrateLocalData />
         </>
+      )}
+
+      {/* DIGITAL RECEIPT SETUP TAB FOR STAFF */}
+      {activeTab === 'receiptSetup' && role !== 'owner' && (
+        <div className="space-y-6 max-w-2xl mx-auto">
+          <form onSubmit={handleSettingsSubmit} className="space-y-6">
+            <Card className="border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-pink-100 dark:bg-pink-500/20 flex items-center justify-center">
+                      <Receipt className="w-5 h-5 text-pink-600 dark:text-pink-400" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                        Quick Digital Receipt & QR Setup
+                      </CardTitle>
+                      <CardDescription className="text-xs text-slate-500">
+                        Configure store tagline, UPI VPA, Google Review QR, and Instagram page link for bills.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  {successMsg && <span className="text-emerald-500 dark:text-emerald-400 text-xs font-black uppercase">SAVED!</span>}
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Store / Cart Tagline</Label>
+                    <Input name="storeTagline" type="text" value={settingsData.storeTagline} onChange={handleSettingsChange} className="h-11" placeholder="100% Traditional Malai & Pot Kulfi" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Bill Number Prefix</Label>
+                    <Input name="billPrefix" type="text" value={settingsData.billPrefix} onChange={handleSettingsChange} className="h-11" placeholder="NOK-" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">UPI ID (VPA for Dynamic QR)</Label>
+                    <Input name="upiId" type="text" value={settingsData.upiId} onChange={handleSettingsChange} className="h-11 font-mono" placeholder="nammaoorukulfi@oksbi" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">UPI Payee / Merchant Name</Label>
+                    <Input name="upiName" type="text" value={settingsData.upiName} onChange={handleSettingsChange} className="h-11" placeholder="Namma Ooru Kulfi" />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
+                      ⭐ Google Maps Review URL
+                    </Label>
+                    <Input name="googleReviewUrl" type="text" value={settingsData.googleReviewUrl} onChange={handleSettingsChange} className="h-11" placeholder="https://maps.app.goo.gl/..." />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label className="text-[10px] font-bold text-pink-600 dark:text-pink-400 uppercase tracking-widest flex items-center gap-1">
+                      📸 Instagram Profile / Page URL
+                    </Label>
+                    <Input name="instagramUrl" type="text" value={settingsData.instagramUrl} onChange={handleSettingsChange} className="h-11" placeholder="https://instagram.com/nammaoorukulfi" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Cart Location / Address</Label>
+                    <Input name="storeAddress" type="text" value={settingsData.storeAddress} onChange={handleSettingsChange} className="h-11" placeholder="Opposite Bus Stand" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Customer Support Phone</Label>
+                    <Input name="storePhone" type="text" value={settingsData.storePhone} onChange={handleSettingsChange} className="h-11" placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Button type="submit" className="w-full h-12 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl shadow-md cursor-pointer" disabled={savingSettings}>
+              {savingSettings ? 'SAVING...' : 'SAVE DIGITAL RECEIPT SETTINGS'}
+            </Button>
+          </form>
+        </div>
       )}
 
       

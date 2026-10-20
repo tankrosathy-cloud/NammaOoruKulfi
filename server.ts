@@ -39,7 +39,7 @@ async function startServer() {
       };
 
       const textPart = {
-        text: "Parse this invoice image. Extract the date of the invoice (in YYYY-MM-DD format). Then, extract the quantities for Pot Kulfi flavours and Stick Kulfi flavours. Note that Stick Kulfi quantities shown on the invoice are in packs (each pack contains 6 pieces), but you should return the number of packs, I will multiply by 6 on my end, OR actually, you can multiply the Stick Kulfi quantities by 6 and return the final piece count. For Pot Kulfis, just return the quantity as is. Ensure you correctly classify Pot vs Stick. Generally Pot Kulfis have 'Pot Kulfi' in the name. Return the result in the specified JSON schema.",
+        text: "Parse this invoice image. Extract the date of the invoice (in YYYY-MM-DD format). Then, extract the quantities for Stick Kulfi flavours and Pot Kulfi flavours. Official Stick Kulfi flavours (each pack contains 6 pieces, multiply packs by 6 to return total piece count): 'Mango malai', 'Kesar Badam', 'Malai', 'Kesar pista', 'Chocolate', 'Pista badam', 'Shahi gulab', 'Black current', 'Strawberry', 'Dry fruit', 'Coconut', 'Gulkand', 'Blue berry', 'Kesar kajoor', 'Guava'. Official Pot Kulfi flavours (count is piece count): 'Badam', 'Pista', 'Pistabadam', 'Shahi gulab'. For Pot Kulfis, return the quantity as is. Ensure you correctly classify Pot vs Stick. Return the result in the specified JSON schema.",
       };
 
       const response = await ai.models.generateContent({

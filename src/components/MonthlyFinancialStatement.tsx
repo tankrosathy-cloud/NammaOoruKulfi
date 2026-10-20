@@ -158,7 +158,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
     const retainedEarnings = netOperatingProfit - totalProfitWithdrawn;
 
     const yuvarajShare = Math.round(netOperatingProfit * 0.5);
-    const sebastinShare = netOperatingProfit - yuvarajShare;
+    const nadeemShare = netOperatingProfit - yuvarajShare;
 
     // Physical Cash collected from cart handovers
     const totalCashHandover = Math.max(0, dailyCashBagTotal - dailyCashBagLoaded);
@@ -207,7 +207,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
       
       // Partner shares
       yuvarajShare,
-      sebastinShare,
+      nadeemShare,
       monthProfits
     };
   }, [entries, expenses, profitWithdrawals, specialOrders, selectedMonth, stickPrice, potPrice, platePrice]);
@@ -301,7 +301,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
                     Premium Ice Candies & Artisanal Kulfis • {franchise?.name || 'Franchise'}
                   </p>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                    Partners: Yuvaraj & Sebastin
+                    Partners: Yuvaraj & Nadeem
                   </p>
                 </div>
               </div>
@@ -531,10 +531,10 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
                 </div>
               </div>
 
-              {/* Sebastin Card */}
+              {/* Nadeem Card */}
               <div className="p-4 rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/80 to-white">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="font-black text-sm text-purple-950 uppercase">Partner: Sebastin</span>
+                  <span className="font-black text-sm text-purple-950 uppercase">Partner: Nadeem</span>
                   <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-purple-100 text-purple-800">
                     50% Share
                   </span>
@@ -542,7 +542,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
                     <span>Monthly Profit Allocation:</span>
-                    <span className="font-black text-purple-900">{formatCurrency(statementData.sebastinShare)}</span>
+                    <span className="font-black text-purple-900">{formatCurrency(statementData.nadeemShare)}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Withdrawn This Month:</span>
@@ -551,7 +551,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
                   <div className="flex justify-between font-black text-slate-900 pt-1.5 border-t border-purple-100">
                     <span>Net Partner Balance:</span>
                     <span className="text-emerald-700">
-                      {formatCurrency(statementData.sebastinShare - (statementData.totalProfitWithdrawn - Math.round(statementData.totalProfitWithdrawn * 0.5)))}
+                      {formatCurrency(statementData.nadeemShare - (statementData.totalProfitWithdrawn - Math.round(statementData.totalProfitWithdrawn * 0.5)))}
                     </span>
                   </div>
                 </div>
@@ -572,7 +572,7 @@ export function MonthlyFinancialStatement({ isOpen, onClose, entries, expenses, 
             <div className="space-y-8">
               <div className="h-10"></div>
               <div className="border-t border-slate-400 pt-1.5">
-                <p className="font-black text-slate-900 uppercase">Sebastin</p>
+                <p className="font-black text-slate-900 uppercase">Nadeem</p>
                 <p className="text-[10px] text-slate-500 font-bold uppercase">Partner / Finance</p>
               </div>
             </div>

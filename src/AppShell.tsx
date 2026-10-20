@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './components/Logo';
-import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield, RotateCw } from 'lucide-react';
+import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield, RotateCw, Receipt } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import AddEntry from './pages/AddEntry';
 import Reports from './pages/Reports';
@@ -16,6 +16,7 @@ import { motion } from 'motion/react';
 import SyncStatus from './components/SyncStatus';
 import SuperAdmin from './pages/SuperAdmin';
 import { isDateInMonth } from './lib/utils';
+import { QuickBillModal } from './components/QuickBillModal';
 
 function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
@@ -42,6 +43,8 @@ function AppShellContent() {
     } catch {}
   };
 
+  const [isQuickBillOpen, setIsQuickBillOpen] = useState(false);
+
   // If actual account is staff, force staff mode. Otherwise follow user's chosen viewMode.
   const effectiveRole: 'owner' | 'staff' = (baseRole === 'staff') ? 'staff' : viewMode;
   const navRole = (baseRole === 'superadmin' && !franchise) ? 'superadmin' : effectiveRole;
@@ -50,7 +53,13 @@ function AppShellContent() {
     setCurrentUserRole(effectiveRole);
   }, [effectiveRole]);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(() => {
+  useEffect(() => {
+    const handleOpenQuickPos = () => setIsQuickBillOpen(true);
+    window.addEventListener('open-quick-pos', handleOpenQuickPos);
+    return () => window.removeEventListener('open-quick-pos', handleOpenQuickPos);
+  }, []);
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'quickbill' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin'>(() => {
     try {
       const isFreshLogin = sessionStorage.getItem('just_logged_in') === 'true';
       if (isFreshLogin) {
@@ -58,7 +67,7 @@ function AppShellContent() {
         sessionStorage.removeItem('namma_active_tab');
         localStorage.removeItem('namma_active_tab');
         sessionStorage.removeItem('namma_edit_date');
-        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
+        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'quickbill');
       }
 
       const lastUser = sessionStorage.getItem('namma_logged_user');
@@ -67,29 +76,29 @@ function AppShellContent() {
         sessionStorage.removeItem('namma_active_tab');
         localStorage.removeItem('namma_active_tab');
         sessionStorage.removeItem('namma_edit_date');
-        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
+        return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'quickbill');
       }
 
       const saved = sessionStorage.getItem('namma_active_tab');
-      const validTabs = ['dashboard', 'add', 'expense', 'reports', 'settings', 'logs', 'superadmin'];
+      const validTabs = ['dashboard', 'quickbill', 'add', 'expense', 'reports', 'settings', 'logs', 'superadmin'];
       if (saved && validTabs.includes(saved)) {
         if (effectiveRole === 'staff') {
-          if (saved === 'settings' || saved === 'logs' || saved === 'superadmin' || saved === 'dashboard' || saved === 'expense') {
-            return 'reports';
+          if (saved === 'dashboard' || saved === 'expense' || saved === 'logs' || saved === 'superadmin') {
+            return 'quickbill';
           }
         }
         if (saved === 'superadmin' && baseRole !== 'superadmin') {
-          return effectiveRole === 'owner' ? 'dashboard' : 'reports';
+          return effectiveRole === 'owner' ? 'dashboard' : 'quickbill';
         }
         return saved as any;
       }
     } catch {}
-    return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'reports');
+    return baseRole === 'superadmin' ? 'superadmin' : (effectiveRole === 'owner' ? 'dashboard' : 'quickbill');
   });
 
   useEffect(() => {
     if (effectiveRole === 'staff' && (activeTab === 'dashboard' || activeTab === 'expense' || activeTab === 'logs' || activeTab === 'superadmin')) {
-      setActiveTab('reports');
+      setActiveTab('quickbill');
     }
   }, [effectiveRole, activeTab]);
 
@@ -166,7 +175,7 @@ function AppShellContent() {
     setActiveTab('expense');
   };
 
-  const navigateTab = (tab: 'dashboard' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin') => {
+  const navigateTab = (tab: 'dashboard' | 'quickbill' | 'add' | 'expense' | 'reports' | 'settings' | 'logs' | 'superadmin') => {
     if (tab !== 'add') {
       setEditDate(undefined);
     }
@@ -285,6 +294,19 @@ function AppShellContent() {
           <SyncStatus />
 
           <button 
+            id="header-quick-pos-btn"
+            onClick={() => setIsQuickBillOpen(true)}
+            className="transition-all duration-200 h-7 w-7 sm:h-auto sm:w-auto p-1 sm:px-2.5 rounded-lg border border-pink-500/40 bg-pink-500/10 hover:bg-pink-500/20 text-pink-600 dark:text-pink-400 flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 shadow-sm shadow-pink-500/10 shrink-0"
+            title="Quick Counter POS & Digital Receipt"
+            aria-label="Quick Counter POS & Digital Receipt"
+          >
+            <span className="text-xs">⚡</span>
+            <span className="hidden sm:inline font-black text-[10px] uppercase tracking-wider">
+              POS & QR
+            </span>
+          </button>
+
+          <button 
             id="refresh-page-btn"
             onClick={handleRefreshPage} 
             disabled={isRefreshing}
@@ -378,14 +400,27 @@ function AppShellContent() {
       )}
       
       <main className="flex-1 overflow-x-hidden pb-28">
-        {activeTab === 'dashboard' && navRole === 'owner' && <Dashboard onNavigateToEntry={handleEditEntry} />}
-        {activeTab === 'add' && <AddEntry role={navRole as any} onSave={() => navigateTab('reports')} onCancel={() => navigateTab('reports')} initialDate={editDate} key={editDate || 'new'} />}
+        {activeTab === 'dashboard' && navRole === 'owner' && (
+          <Dashboard 
+            onNavigateToEntry={handleEditEntry} 
+            onOpenQuickBill={() => setIsQuickBillOpen(true)} 
+          />
+        )}
+        {activeTab === 'quickbill' && <QuickBillModal isOpen={true} onClose={() => {}} isEmbedded={true} />}
+        {activeTab === 'add' && <AddEntry role={navRole as any} onSave={() => navigateTab(navRole === 'staff' ? 'quickbill' : 'reports')} onCancel={() => navigateTab(navRole === 'staff' ? 'quickbill' : 'reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && navRole === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={navRole as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
         {activeTab === 'settings' && <SettingsPage role={navRole as any} />}
         {activeTab === 'logs' && navRole === 'owner' && <HistoryLogs />}
         {activeTab === 'superadmin' && baseRole === 'superadmin' && <SuperAdmin onNavigate={(tab) => navigateTab(tab as any)} />}
       </main>
+
+      {isQuickBillOpen && (
+        <QuickBillModal
+          isOpen={isQuickBillOpen}
+          onClose={() => setIsQuickBillOpen(false)}
+        />
+      )}
 
       <nav className={`fixed bottom-0 w-full pb-safe flex justify-around items-center h-20 px-2 pb-4 pt-2 z-30 transition-all duration-300 border-t ${
         isDark 
@@ -417,6 +452,15 @@ function AppShellContent() {
           onClick={() => navigateTab('add')} 
           isDark={isDark}
         />}
+        {navRole === 'staff' && (
+          <NavItem 
+            icon={<Receipt className="w-5 h-5" />} 
+            label="Receipt" 
+            active={activeTab === 'quickbill'} 
+            onClick={() => navigateTab('quickbill')} 
+            isDark={isDark}
+          />
+        )}
         {navRole === 'owner' && (
           <NavItem 
             icon={<Wallet className="w-5 h-5" />} 
@@ -475,7 +519,9 @@ export default function AppShell() {
     activeFid = 'all';
   }
 
-  setCurrentFranchiseId(activeFid);
+  useEffect(() => {
+    setCurrentFranchiseId(activeFid);
+  }, [activeFid]);
 
   return (
     <StoreProvider franchiseId={activeFid}>

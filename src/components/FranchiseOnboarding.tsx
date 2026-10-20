@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { useFranchise } from '../context/FranchiseContext';
-import { auth } from '../lib/firebase';
+import { useFranchise, SATHY_FRANCHISE_ID, SATHY_FRANCHISE_NAME } from '../context/FranchiseContext';
+import { auth, db } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { Building2, KeyRound, LogOut, ArrowRight, Loader2 } from 'lucide-react';
+import { Building2, KeyRound, LogOut, ArrowRight, Loader2, Store } from 'lucide-react';
+import { UserProfile, Franchise } from '../types';
 
 export function FranchiseOnboarding() {
   const { createFranchise, joinFranchise } = useFranchise();
@@ -11,6 +13,55 @@ export function FranchiseOnboarding() {
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const currentUser = auth.currentUser;
+  const userEmail = (currentUser?.email || '').toLowerCase().trim();
+  const isSathyUser = userEmail === 'nammaoorukulfisathy@gmail.com' || userEmail.includes('sathy') || userEmail.includes('kulfi');
+
+  // Auto-connect Sathyamangalam store without requiring user to go through onboarding
+  React.useEffect(() => {
+    if (isSathyUser && currentUser && !loading) {
+      handleAccessSathyStore();
+    }
+  }, [isSathyUser, currentUser]);
+
+  const handleAccessSathyStore = async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    setError('');
+    try {
+      const sProfile: UserProfile = {
+        uid: currentUser.uid,
+        email: currentUser.email || 'nammaoorukulfisathy@gmail.com',
+        role: 'owner',
+        franchiseId: SATHY_FRANCHISE_ID
+      };
+      const sFranchise: Franchise = {
+        id: SATHY_FRANCHISE_ID,
+        name: SATHY_FRANCHISE_NAME,
+        ownerId: currentUser.uid,
+        inviteCode: 'SATHY1',
+        createdAt: '2026-08-31T09:27:24.071Z'
+      };
+
+      localStorage.setItem(`namma_profile_${currentUser.uid}`, JSON.stringify(sProfile));
+      localStorage.setItem(`namma_franchise_${currentUser.uid}`, JSON.stringify(sFranchise));
+      localStorage.setItem('namma_last_profile', JSON.stringify(sProfile));
+      localStorage.setItem('namma_last_franchise', JSON.stringify(sFranchise));
+
+      try {
+        await setDoc(doc(db, 'users', currentUser.uid), sProfile, { merge: true });
+        await setDoc(doc(db, 'franchises', SATHY_FRANCHISE_ID), sFranchise, { merge: true });
+      } catch (err) {
+        console.warn("Could not write store docs to Firestore immediately:", err);
+      }
+
+      window.location.reload();
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect to Sathyamangalam store');
+      setLoading(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +89,20 @@ export function FranchiseOnboarding() {
     }
   };
 
+  if (isSathyUser && loading) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-stone-200 text-center space-y-4">
+          <div className="bg-amber-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto text-amber-700">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+          <h2 className="text-xl font-bold text-stone-800">Connecting to Sathyamangalam Store...</h2>
+          <p className="text-sm text-stone-500">Loading your store dashboard and inventory</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 border border-stone-200">
@@ -45,8 +110,8 @@ export function FranchiseOnboarding() {
           <div className="bg-amber-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-8 h-8 text-amber-700" />
           </div>
-          <h2 className="text-2xl font-bold text-stone-800">Welcome to Kulfi</h2>
-          <p className="text-stone-500 mt-2">Set up your workspace to get started</p>
+          <h2 className="text-2xl font-bold text-stone-800">Welcome to Namma Ooru Kulfi</h2>
+          <p className="text-stone-500 mt-2">Set up or connect your store workspace to get started</p>
         </div>
 
         {error && (
@@ -57,6 +122,26 @@ export function FranchiseOnboarding() {
 
         {mode === 'select' && (
           <div className="space-y-4">
+            {/* Quick Connect for Sathyamangalam / Existing Owner */}
+            <button
+              onClick={handleAccessSathyStore}
+              disabled={loading}
+              className="w-full p-4 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border-2 border-amber-300 rounded-2xl transition-all shadow-sm group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="bg-amber-500 text-white p-3 rounded-xl shadow-sm">
+                  <Store className="w-6 h-6" />
+                </div>
+                <div className="text-left">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-amber-950">Sathyamangalam Store</h3>
+                    <span className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Existing</span>
+                  </div>
+                  <p className="text-xs text-amber-800/80">Connect to Sathyamangalam (Namma Ooru Kulfi)</p>
+                </div>
+              </div>
+              <ArrowRight className="w-5 h-5 text-amber-600 group-hover:translate-x-1 transition-transform" />
+            </button>
             <button
               onClick={() => setMode('create')}
               className="w-full p-4 flex items-center justify-between bg-stone-50 hover:bg-amber-50 border border-stone-200 hover:border-amber-200 rounded-2xl transition-colors group"

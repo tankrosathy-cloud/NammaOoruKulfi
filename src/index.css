@@ -30,3 +30,26 @@ body {
   }
 }
 
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #digital-receipt-printable, #digital-receipt-printable * {
+    visibility: visible;
+  }
+  #digital-receipt-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 340px !important;
+    margin: 0 auto;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 10px !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+}
+
+

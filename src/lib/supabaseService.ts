@@ -178,9 +178,10 @@ function rowToInventory(r: any): InventoryStock {
 }
 
 function settingsToRow(s: Settings) {
+  const targetId = (currentFranchiseId && currentFranchiseId !== 'all' && currentFranchiseId !== 'NONE') ? currentFranchiseId : 'global';
   return {
-    id: currentFranchiseId || 'global',
-    franchise_id: currentFranchiseId || null,
+    id: targetId,
+    franchise_id: (targetId === 'global') ? null : targetId,
     stick_price: Number(s.stickPrice) || 40,
     pot_price: Number(s.potPrice) || 50,
     plate_price: Number(s.platePrice) || 75,
@@ -534,31 +535,51 @@ export async function fetchSettingsFromSupabase(): Promise<Settings | null> {
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('settings')
-    .select('*')
-    
-    .eq('id', currentFranchiseId || 'global')
-    .single();
+  const targetId = (currentFranchiseId && currentFranchiseId !== 'all' && currentFranchiseId !== 'NONE') ? currentFranchiseId : 'global';
 
-  if (error || !data) {
+  try {
+    let { data, error } = await client
+      .from('settings')
+      .select('*')
+      .eq('id', targetId)
+      .maybeSingle();
+
+    if ((!data || error) && targetId !== 'global') {
+      const fallback = await client
+        .from('settings')
+        .select('*')
+        .eq('id', 'global')
+        .maybeSingle();
+      data = fallback.data;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return rowToSettings(data);
+  } catch (err) {
+    console.warn("Supabase fetchSettings notice:", err);
     return null;
   }
-
-  return rowToSettings(data);
 }
 
 export async function upsertSettingsToSupabase(s: Settings): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
-  const row = settingsToRow(s);
-  const { error } = await client.from('settings').upsert(row, { onConflict: 'id' });
-  if (error) {
-    console.error('Supabase upsert settings error:', error);
-    throw error;
+  try {
+    const row = settingsToRow(s);
+    const { error } = await client.from('settings').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase upsert settings notice:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Supabase upsert settings exception:', err);
+    return false;
   }
-  return true;
 }
 
 export async function fetchProfitWithdrawalsFromSupabase(): Promise<ProfitWithdrawal[] | null> {

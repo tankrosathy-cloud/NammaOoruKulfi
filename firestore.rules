@@ -7,36 +7,50 @@ service cloud.firestore {
     }
     
     function getUserFranchiseId() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return userDoc != null ? userDoc.data.get('franchiseId', null) : null;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('franchiseId', null)
+        : null;
     }
     
-    function isFranchiseMember(franchiseId) {
-      return isAuthenticated() && getUserFranchiseId() == franchiseId;
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email in ['superadmin@gmail.com', 'nammaoorukulfisathy@gmail.com', 'NammaOoruKulfisathy@gmail.com'] ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['superadmin', 'super_admin'])
+      );
     }
 
-    function isSuperAdmin() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return userDoc != null && userDoc.data.role == 'superadmin';
+    function isFranchiseMember(franchiseId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        franchiseId == 'global' ||
+        franchiseId == 'NONE' ||
+        franchiseId == 'all' ||
+        getUserFranchiseId() == franchiseId
+      );
     }
 
     function isOwnerOfUserFranchise() {
-      let updaterDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return updaterDoc != null && 
-             (updaterDoc.data.role == 'owner' || updaterDoc.data.role == 'manager') && 
-             updaterDoc.data.franchiseId == resource.data.franchiseId;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['owner', 'manager']) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('franchiseId', '') == resource.data.franchiseId;
     }
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isOwnerOfUserFranchise() || isSuperAdmin());
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isOwnerOfUserFranchise() || isSuperAdmin());
     }
 
     match /franchises/{franchiseId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (resource.data.get('ownerId', '') == request.auth.uid || resource.id == getUserFranchiseId());
+      allow update: if isAuthenticated() && (
+        resource.data.get('ownerId', '') == request.auth.uid || 
+        resource.data.get('ownerId', '') == '' ||
+        !('ownerId' in resource.data) ||
+        resource.id == getUserFranchiseId() || 
+        isSuperAdmin()
+      );
     }
 
     match /entries/{entryId} {
@@ -60,8 +74,13 @@ service cloud.firestore {
     }
 
     match /daily_denominations/{date} {
-      allow read, update, delete: if isSuperAdmin() || isFranchiseMember(resource.data.franchiseId);
-      allow create: if isSuperAdmin() || isFranchiseMember(request.resource.data.franchiseId);
+      allow read, update, delete: if isAuthenticated();
+      allow create: if isAuthenticated();
+    }
+
+    match /bills/{billId} {
+      allow read: if true;
+      allow write, delete: if isAuthenticated();
     }
 
     match /logs/{logId} {
@@ -70,13 +89,13 @@ service cloud.firestore {
     }
 
     match /settings/{docId} {
-      allow read, update, delete: if isSuperAdmin() || isFranchiseMember(docId) || docId == 'global';
-      allow create: if isSuperAdmin() || isFranchiseMember(docId) || docId == 'global';
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /inventory/{docId} {
-      allow read, update, delete: if isSuperAdmin() || isFranchiseMember(docId) || docId == 'global';
-      allow create: if isSuperAdmin() || isFranchiseMember(docId) || docId == 'global';
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
   }
 }
