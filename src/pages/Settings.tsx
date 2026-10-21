@@ -49,7 +49,7 @@ import {
 import { format, parseISO, addDays, subDays, isToday as isTodayDate, startOfMonth, endOfMonth } from 'date-fns';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
 
 import { InventoryStock, UserProfile, Settings } from '../types';
 import Planner from './Planner';
@@ -90,7 +90,10 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
         setInviteCopied(true);
         setTimeout(() => setInviteCopied(false), 2000);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || String(err).includes('Abort') || String(err).includes('cancel')) {
+        return;
+      }
       console.error('Failed to share', err);
     }
   };
@@ -208,7 +211,15 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
         try {
           const q = query(collection(db, 'users'), where('franchiseId', '==', franchise.id));
           const snapshot = await getDocs(q);
-          const users = snapshot.docs.map(doc => doc.data() as UserProfile);
+          const staffEmails = ['rabertraj777@gmail.com', 'dheepakkumar.m143@gmail.com'];
+          const users = snapshot.docs.map(d => {
+            const data = d.data() as UserProfile;
+            if (staffEmails.includes((data.email || '').toLowerCase().trim()) && data.role === 'owner') {
+              data.role = 'staff';
+              setDoc(doc(db, 'users', d.id), { role: 'staff' }, { merge: true }).catch(() => {});
+            }
+            return data;
+          });
           setStaffUsers(users.filter(u => u.uid !== franchise?.ownerId));
         } catch (err) {
           console.error("Failed to fetch staff:", err);
@@ -2120,7 +2131,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                                 </h4>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   <span className="text-[9px] uppercase tracking-wider font-extrabold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60">
-                                    {staff.role || 'Staff'}
+                                    {['rabertraj777@gmail.com', 'dheepakkumar.m143@gmail.com'].includes((staff.email || '').toLowerCase().trim()) ? 'Staff' : (staff.role === 'owner' ? 'Staff' : (staff.role || 'Staff'))}
                                   </span>
                                   {staff.isOnline && (
                                     <span className="flex items-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-400 font-bold">

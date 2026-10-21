@@ -29,17 +29,28 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
         const userEmail = (user.email || '').toLowerCase().trim();
-        const isSathyOwner = 
+        const staffEmails = ['rabertraj777@gmail.com', 'dheepakkumar.m143@gmail.com'];
+        const isStaffUser = staffEmails.includes(userEmail);
+
+        const isSathyOwner = !isStaffUser && (
           userEmail === 'nammaoorukulfisathy@gmail.com' ||
           userEmail.includes('sathy') ||
           userEmail.startsWith('tankrosathy') ||
-          ADMIN_USERNAMES.some(name => userEmail.startsWith(name) || userEmail === name);
+          ADMIN_USERNAMES.some(name => userEmail.startsWith(name) || userEmail === name)
+        );
 
         // Predefined profile for the Sathyamangalam main store
         const sathyProfile: UserProfile = {
           uid: user.uid,
           email: user.email || 'nammaoorukulfisathy@gmail.com',
           role: 'owner',
+          franchiseId: SATHY_FRANCHISE_ID
+        };
+
+        const staffProfile: UserProfile = {
+          uid: user.uid,
+          email: user.email || userEmail,
+          role: 'staff',
           franchiseId: SATHY_FRANCHISE_ID
         };
 
@@ -56,7 +67,7 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
         try {
           const cachedPStr = localStorage.getItem(`namma_profile_${user.uid}`) || localStorage.getItem('namma_last_profile');
           const cachedFStr = localStorage.getItem(`namma_franchise_${user.uid}`) || localStorage.getItem('namma_last_franchise');
-          if (cachedPStr) {
+          if (cachedPStr && !isStaffUser) {
             const cachedP = JSON.parse(cachedPStr) as UserProfile;
             setProfile(cachedP);
             setCurrentFranchiseId(cachedP.franchiseId);
@@ -70,8 +81,18 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
           console.warn("Could not parse local franchise cache", e);
         }
 
-        // If this is the known Sathyamangalam store owner/admin, unlock immediately without waiting for network!
-        if (isSathyOwner) {
+        // If this is a designated staff user, assign staff profile immediately!
+        if (isStaffUser) {
+          try {
+            localStorage.removeItem(`namma_profile_${user.uid}`);
+            localStorage.setItem('namma_last_profile', JSON.stringify(staffProfile));
+          } catch {}
+          setProfile(staffProfile);
+          setFranchise(sathyFranchise);
+          setCurrentFranchiseId(SATHY_FRANCHISE_ID);
+          setLoading(false);
+          hasCache = true;
+        } else if (isSathyOwner) {
           setProfile(sathyProfile);
           setFranchise(sathyFranchise);
           setCurrentFranchiseId(SATHY_FRANCHISE_ID);
@@ -157,6 +178,12 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
             } catch (e) {
               console.warn("Franchise owner check skipped/failed:", e);
             }
+          }
+
+          // Force staff role for designated staff emails
+          if (isStaffUser) {
+            resolvedProfile = staffProfile;
+            resolvedFranchise = sathyFranchise;
           }
 
           // Attempt 4: If Sathy store admin/owner, apply Sathyamangalam profile and ensure cloud sync
