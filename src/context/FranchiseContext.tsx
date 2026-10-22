@@ -32,12 +32,9 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
         const staffEmails = ['rabertraj777@gmail.com', 'dheepakkumar.m143@gmail.com'];
         const isStaffUser = staffEmails.includes(userEmail);
 
-        const isSathyOwner = !isStaffUser && (
-          userEmail === 'nammaoorukulfisathy@gmail.com' ||
-          userEmail.includes('sathy') ||
-          userEmail.startsWith('tankrosathy') ||
-          ADMIN_USERNAMES.some(name => userEmail.startsWith(name) || userEmail === name)
-        );
+        const masterOwnerEmails = ['tankrosathy@gmail.com', 'nammaoorukulfisathy@gmail.com'];
+        const isMasterOwner = masterOwnerEmails.includes(userEmail) || userEmail.startsWith('tankrosathy');
+        const isSathyOwner = !isStaffUser && isMasterOwner;
 
         // Predefined profile for the Sathyamangalam main store
         const sathyProfile: UserProfile = {

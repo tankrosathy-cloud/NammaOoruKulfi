@@ -16,7 +16,8 @@ export function FranchiseOnboarding() {
 
   const currentUser = auth.currentUser;
   const userEmail = (currentUser?.email || '').toLowerCase().trim();
-  const isSathyUser = userEmail === 'nammaoorukulfisathy@gmail.com' || userEmail.includes('sathy') || userEmail.includes('kulfi');
+  const masterOwnerEmails = ['tankrosathy@gmail.com', 'nammaoorukulfisathy@gmail.com'];
+  const isSathyUser = masterOwnerEmails.includes(userEmail) || userEmail.startsWith('tankrosathy');
 
   // Auto-connect Sathyamangalam store without requiring user to go through onboarding
   React.useEffect(() => {
@@ -123,25 +124,27 @@ export function FranchiseOnboarding() {
         {mode === 'select' && (
           <div className="space-y-4">
             {/* Quick Connect for Sathyamangalam / Existing Owner */}
-            <button
-              onClick={handleAccessSathyStore}
-              disabled={loading}
-              className="w-full p-4 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border-2 border-amber-300 rounded-2xl transition-all shadow-sm group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="bg-amber-500 text-white p-3 rounded-xl shadow-sm">
-                  <Store className="w-6 h-6" />
-                </div>
-                <div className="text-left">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-amber-950">Sathyamangalam Store</h3>
-                    <span className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Existing</span>
+            {isSathyUser && (
+              <button
+                onClick={handleAccessSathyStore}
+                disabled={loading}
+                className="w-full p-4 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border-2 border-amber-300 rounded-2xl transition-all shadow-sm group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-amber-500 text-white p-3 rounded-xl shadow-sm">
+                    <Store className="w-6 h-6" />
                   </div>
-                  <p className="text-xs text-amber-800/80">Connect to Sathyamangalam (Namma Ooru Kulfi)</p>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-amber-950">Sathyamangalam Store</h3>
+                      <span className="bg-amber-200 text-amber-900 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">Existing</span>
+                    </div>
+                    <p className="text-xs text-amber-800/80">Connect to Sathyamangalam (Namma Ooru Kulfi)</p>
+                  </div>
                 </div>
-              </div>
-              <ArrowRight className="w-5 h-5 text-amber-600 group-hover:translate-x-1 transition-transform" />
-            </button>
+                <ArrowRight className="w-5 h-5 text-amber-600 group-hover:translate-x-1 transition-transform" />
+              </button>
+            )}
             <button
               onClick={() => setMode('create')}
               className="w-full p-4 flex items-center justify-between bg-stone-50 hover:bg-amber-50 border border-stone-200 hover:border-amber-200 rounded-2xl transition-colors group"

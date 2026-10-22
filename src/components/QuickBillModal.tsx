@@ -659,14 +659,16 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             </button>
 
             {/* Close */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-              title="Close POS"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {!isEmbedded && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                title="Close POS"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 
