@@ -116,6 +116,8 @@ export interface QuickBill {
   syncedToDailyEntry?: boolean;
   userId?: string;
   updatedAt?: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
 }
 
 

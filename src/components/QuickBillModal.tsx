@@ -26,6 +26,7 @@ import {
   Check,
   ChevronRight,
   TrendingUp,
+  Calendar,
   Percent,
   Search,
   History
@@ -129,8 +130,9 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [redeemType, setRedeemType] = useState<'none' | 'stick' | 'pot'>('none');
 
-  // Today's bills calculation
   const todayBills = useMemo(() => {
     return bills.filter(b => b.date === todayStr);
   }, [bills, todayStr]);
@@ -139,21 +141,30 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     return todayBills.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
   }, [todayBills]);
 
-  const todayUpiTotal = useMemo(() => {
-    return todayBills.reduce((sum, b) => {
+  // Selected date bills calculation
+  const filteredBills = useMemo(() => {
+    return bills.filter(b => b.date === selectedDate);
+  }, [bills, selectedDate]);
+
+  const salesTotal = useMemo(() => {
+    return filteredBills.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  }, [filteredBills]);
+
+  const upiTotal = useMemo(() => {
+    return filteredBills.reduce((sum, b) => {
       if (b.paymentMethod === 'upi') return sum + b.totalAmount;
       if (b.paymentMethod === 'split') return sum + (b.upiAmount || 0);
       return sum;
     }, 0);
-  }, [todayBills]);
+  }, [filteredBills]);
 
-  const todayCashTotal = useMemo(() => {
-    return todayBills.reduce((sum, b) => {
+  const cashTotal = useMemo(() => {
+    return filteredBills.reduce((sum, b) => {
       if (b.paymentMethod === 'cash') return sum + b.totalAmount;
       if (b.paymentMethod === 'split') return sum + (b.cashAmount || 0);
       return sum;
     }, 0);
-  }, [todayBills]);
+  }, [filteredBills]);
 
 
   // Audio beep on item tap / completion
@@ -190,12 +201,55 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   // Customer retail bills in POS do NOT include platform fee (platform fee is a daily stall rent expense)
   const platformFee = 0;
 
+  // Loyalty points calculations
+  const cleanCustomerPhone = customerPhone.replace(/\D/g, '');
+  const customerPointsBalance = useMemo(() => {
+    if (cleanCustomerPhone.length < 10) return 0;
+    let earned = 0;
+    let redeemed = 0;
+    bills.forEach(b => {
+      if ((b.customerPhone || '').replace(/\D/g, '') === cleanCustomerPhone) {
+        earned += (b.pointsEarned || 0);
+        redeemed += (b.pointsRedeemed || 0);
+      }
+    });
+    return Math.max(0, earned - redeemed);
+  }, [bills, cleanCustomerPhone]);
+
+  const cartSticksCount = useMemo(() => {
+    return cartItems.filter(i => i.category === 'stick').reduce((s, i) => s + i.quantity, 0);
+  }, [cartItems]);
+
+  const cartPotsCount = useMemo(() => {
+    return cartItems.filter(i => i.category === 'pot').reduce((s, i) => s + i.quantity, 0);
+  }, [cartItems]);
+
+  const pointsEarnedThisOrder = useMemo(() => {
+    return (cartSticksCount + cartPotsCount) * 3;
+  }, [cartSticksCount, cartPotsCount]);
+
+  const redemptionDiscount = useMemo(() => {
+    if (redeemType === 'stick' && customerPointsBalance >= 40) {
+      return settings.stickPrice || 40;
+    }
+    if (redeemType === 'pot' && customerPointsBalance >= 50) {
+      return settings.potPrice || 50;
+    }
+    return 0;
+  }, [redeemType, customerPointsBalance, settings.stickPrice, settings.potPrice]);
+
+  const pointsRedeemedThisOrder = useMemo(() => {
+    if (redeemType === 'stick' && customerPointsBalance >= 40) return 40;
+    if (redeemType === 'pot' && customerPointsBalance >= 50) return 50;
+    return 0;
+  }, [redeemType, customerPointsBalance]);
+
   const grandTotal = useMemo(() => {
     if (paymentMethod === 'complimentary') return 0;
     if (cartItems.length === 0) return 0;
-    const calculated = subtotal - discount;
+    const calculated = subtotal - discount - redemptionDiscount;
     return Math.max(0, calculated);
-  }, [subtotal, discount, paymentMethod, cartItems.length]);
+  }, [subtotal, discount, redemptionDiscount, paymentMethod, cartItems.length]);
 
   // UPI amount when in split mode
   const currentUpiAmount = useMemo(() => {
@@ -412,6 +466,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     triggerHaptic();
     setCartItems([]);
     setDiscount(0);
+    setRedeemType('none');
     setCashTendered('');
     setSplitCashAmount('');
     setCustomerPhone('');
@@ -464,7 +519,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       createdAt: now.toISOString(),
       items: cartItems,
       subtotal,
-      discount,
+      discount: discount + redemptionDiscount,
       platformFee,
       totalAmount: grandTotal,
       paymentMethod,
@@ -475,7 +530,9 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       customerName: customerName.trim() || '',
       notes: notes.trim() || '',
       syncedToDailyEntry: settings.autoSyncBillToEntry !== false,
-      userId: auth.currentUser?.uid || ''
+      userId: auth.currentUser?.uid || '',
+      pointsEarned: pointsEarnedThisOrder,
+      pointsRedeemed: pointsRedeemedThisOrder
     };
 
     // Instant UI transition so staff is never stuck
@@ -535,6 +592,13 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     }
     if (bill.platformFee > 0) {
       text += `Platform Fee: +₹${bill.platformFee}\n`;
+    }
+
+    if (bill.pointsEarned && bill.pointsEarned > 0) {
+      text += `⭐ *Loyalty Points Earned:* +${bill.pointsEarned} pts\n`;
+    }
+    if (bill.pointsRedeemed && bill.pointsRedeemed > 0) {
+      text += `🎁 *Points Redeemed:* -${bill.pointsRedeemed} pts (Free item claimed)\n`;
     }
 
     text += `━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -644,7 +708,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 }`}
               >
                 <History className="w-3.5 h-3.5" />
-                <span>Today ({todayBills.length})</span>
+                <span>History ({filteredBills.length})</span>
               </button>
             </div>
 
@@ -659,16 +723,14 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             </button>
 
             {/* Close */}
-            {!isEmbedded && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                title="Close POS"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              title="Close POS"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -719,7 +781,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>Today ({todayBills.length})</span>
+            <span>History ({filteredBills.length})</span>
           </button>
         </div>
 
@@ -1286,13 +1348,13 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   </div>
                 )}
 
-                {/* Customer mobile number for WhatsApp dispatch */}
+                {/* Customer mobile number & Loyalty Points */}
                 {cartItems.length > 0 && (
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1">
-                    <label className="text-[10px] font-extrabold uppercase text-slate-400 flex items-center justify-between">
-                      <span>Customer Mobile (Optional)</span>
-                      <span className="text-emerald-500 lowercase text-[9px]">for WhatsApp bill</span>
-                    </label>
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-slate-400">
+                      <span>Customer Mobile & Loyalty</span>
+                      <span className="text-amber-500 font-bold">3 pts / stick or pot</span>
+                    </div>
                     <div className="relative">
                       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                         +91
@@ -1301,12 +1363,63 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                         type="tel"
                         inputMode="numeric"
                         maxLength={10}
-                        placeholder="9876543210"
+                        placeholder="9876543210 (Customer Phone)"
                         value={customerPhone}
-                        onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, ''))}
+                        onChange={e => {
+                          setCustomerPhone(e.target.value.replace(/\D/g, ''));
+                          setRedeemType('none');
+                        }}
                         className="w-full h-8 pl-10 pr-3 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       />
                     </div>
+
+                    {cleanCustomerPhone.length === 10 && (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-black text-amber-800 dark:text-amber-300">
+                            ⭐ Points Balance: <span className="font-mono">{customerPointsBalance} pts</span>
+                          </span>
+                          <span className="text-[10px] text-amber-700/80 dark:text-amber-400 font-bold">
+                            (+{pointsEarnedThisOrder} pts earned today)
+                          </span>
+                        </div>
+
+                        {/* Redemption buttons */}
+                        <div className="flex items-center gap-1.5 pt-1">
+                          {customerPointsBalance >= 40 && (
+                            <button
+                              type="button"
+                              onClick={() => setRedeemType(redeemType === 'stick' ? 'none' : 'stick')}
+                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
+                                redeemType === 'stick'
+                                  ? 'bg-amber-600 text-white shadow-md'
+                                  : 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                              }`}
+                            >
+                              {redeemType === 'stick' ? '✓ Free Stick Applied' : `🎁 Redeem Stick (40 pts)`}
+                            </button>
+                          )}
+                          {customerPointsBalance >= 50 && (
+                            <button
+                              type="button"
+                              onClick={() => setRedeemType(redeemType === 'pot' ? 'none' : 'pot')}
+                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
+                                redeemType === 'pot'
+                                  ? 'bg-amber-600 text-white shadow-md'
+                                  : 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                              }`}
+                            >
+                              {redeemType === 'pot' ? '✓ Free Pot Applied' : `🎁 Redeem Pot (50 pts)`}
+                            </button>
+                          )}
+                          {customerPointsBalance < 40 && (
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                              Need {40 - customerPointsBalance} more pts to redeem a free Stick (40 pts) or Pot (50 pts).
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1579,6 +1692,22 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   </div>
                 </div>
 
+                {/* Loyalty Points Summary */}
+                {currentBill.customerPhone && (
+                  <div className="py-2.5 border-b border-dashed border-slate-300 dark:border-slate-700 space-y-1 text-[11px] font-sans">
+                    <div className="flex justify-between font-bold text-amber-600 dark:text-amber-400">
+                      <span>⭐ Loyalty Points Earned:</span>
+                      <span>+{currentBill.pointsEarned || 0} pts</span>
+                    </div>
+                    {Boolean(currentBill.pointsRedeemed && currentBill.pointsRedeemed > 0) && (
+                      <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400">
+                        <span>🎁 Points Redeemed:</span>
+                        <span>-{currentBill.pointsRedeemed} pts (Free item)</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Itemized Table */}
                 <div className="py-3 border-b border-dashed border-slate-300 dark:border-slate-700 space-y-2">
                   <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
@@ -1811,16 +1940,60 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
         {/* ========================================================================= */}
         {modalMode === 'history' && (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-            {/* Today's Sales KPI cards */}
+            {/* Date Selector & Quick Filters */}
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
+              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Calendar className="w-4 h-4 text-pink-500 shrink-0" />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Select Date:</span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border text-xs font-bold font-mono bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+                    selectedDate === todayStr 
+                      ? 'bg-pink-500 text-white shadow-md' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const yest = new Date();
+                    yest.setDate(yest.getDate() - 1);
+                    setSelectedDate(format(yest, 'yyyy-MM-dd'));
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+                    selectedDate === format(new Date(Date.now() - 86400000), 'yyyy-MM-dd')
+                      ? 'bg-pink-500 text-white shadow-md' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Yesterday
+                </button>
+              </div>
+            </div>
+
+            {/* Sales KPI cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className={`p-4 rounded-2xl border ${
                 isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}>
                 <span className="text-[10px] font-extrabold uppercase text-slate-400 block tracking-wider">
-                  Today's Counter Bills
+                  Total Bills ({selectedDate})
                 </span>
                 <span className="text-2xl font-black text-slate-900 dark:text-white font-mono mt-1 block">
-                  {todayBills.length} bills
+                  {filteredBills.length} bills (₹{salesTotal})
                 </span>
               </div>
 
@@ -1831,7 +2004,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   UPI QR Collections
                 </span>
                 <span className="text-2xl font-black text-cyan-600 dark:text-cyan-400 font-mono mt-1 block">
-                  ₹{todayUpiTotal}
+                  ₹{upiTotal}
                 </span>
               </div>
 
@@ -1842,24 +2015,24 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   Cash Collections
                 </span>
                 <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono mt-1 block">
-                  ₹{todayCashTotal}
+                  ₹{cashTotal}
                 </span>
               </div>
             </div>
 
-            {/* List of today's bills */}
+            {/* List of bills for selected date */}
             <div className="space-y-2">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
-                Recent Bills ({todayBills.length})
+                Bills for {selectedDate} ({filteredBills.length})
               </h4>
 
-              {todayBills.length === 0 ? (
+              {filteredBills.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                  <p className="text-xs font-bold">No bills generated today yet</p>
-                  <p className="text-[10px] mt-1">Tap "Counter" above to start taking orders!</p>
+                  <p className="text-xs font-bold">No bills generated on {selectedDate}</p>
+                  <p className="text-[10px] mt-1">Select another date above or switch to Counter to take orders.</p>
                 </div>
               ) : (
-                todayBills.map(bill => (
+                filteredBills.map(bill => (
                   <div 
                     key={bill.id}
                     className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition-colors ${
