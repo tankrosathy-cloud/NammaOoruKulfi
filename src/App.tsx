@@ -8,6 +8,8 @@ import { Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useTheme } from './context/ThemeContext';
 import { useFranchise } from './context/FranchiseContext';
 import { FranchiseOnboarding } from './components/FranchiseOnboarding';
+import { isSuperAdminEmail } from './lib/utils';
+import { StoreProvider } from './store';
 
 // Basic Logo component placeholder if Logo is not imported
 const Logo = ({ className }: { className?: string }) => (
@@ -47,13 +49,15 @@ export default function App() {
 
   const userEmail = (user.email || '').toLowerCase().trim();
 
-  if (userEmail === 'superadmin@gmail.com') {
+  if (isSuperAdminEmail(userEmail)) {
     return (
-      <div className={`min-h-screen transition-colors duration-300 ${
-        isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
-      }`}>
-        <SuperAdmin />
-      </div>
+      <StoreProvider franchiseId="all">
+        <div className={`min-h-screen transition-colors duration-300 ${
+          isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
+        }`}>
+          <SuperAdmin />
+        </div>
+      </StoreProvider>
     );
   }
 

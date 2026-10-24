@@ -49,9 +49,10 @@ import {
 import { format, parseISO, addDays, subDays, isToday as isTodayDate, startOfMonth, endOfMonth } from 'date-fns';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 
 import { InventoryStock, UserProfile, Settings } from '../types';
+import { isSuperAdminEmail } from '../lib/utils';
 import Planner from './Planner';
 import ExportData from '../components/ExportData';
 import MigrateLocalData from '../components/MigrateLocalData';
@@ -62,7 +63,7 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, 
 
 export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const { profile, franchise } = useFranchise();
-  const isSuperAdmin = profile?.role === 'superadmin' || auth.currentUser?.email === 'superadmin@gmail.com';
+  const isSuperAdmin = profile?.role === 'superadmin' || isSuperAdminEmail(auth.currentUser?.email);
 
   const handleCopyInvite = async () => {
     if (!franchise?.inviteCode) return;
@@ -118,7 +119,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     monthlyGoal: '',
     enableStick: true,
     enablePot: true,
-    enablePlate: true,
+    enablePlate: false,
     enablePlatformFee: false,
     stickPrice: '',
     potPrice: '',
@@ -184,19 +185,51 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
 
   const [staffRemoveConfirmId, setStaffRemoveConfirmId] = useState<string | null>(null);
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null);
+  const [removeAllConfirm, setRemoveAllConfirm] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
-  const handleRemoveStaff = async (staffId: string) => {
+  const handleRemoveAllStaff = async () => {
+    if (!franchise?.id) return;
+    setClearingAll(true);
+    try {
+      const emailsToBlock = staffUsers.map(s => (s.email || '').toLowerCase().trim()).filter(Boolean);
+      const promises = staffUsers.map(staff => 
+        deleteDoc(doc(db, 'users', staff.uid)).catch(() => 
+          updateDoc(doc(db, 'users', staff.uid), { franchiseId: '' })
+        )
+      );
+      await Promise.all(promises);
+
+      if (emailsToBlock.length > 0) {
+        await updateDoc(doc(db, 'franchises', franchise.id), {
+          removedEmails: arrayUnion(...emailsToBlock)
+        }).catch(() => {});
+      }
+
+      setStaffUsers([]);
+      setRemoveAllConfirm(false);
+    } catch (err) {
+      console.error("Failed to remove all staff:", err);
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
+  const handleRemoveStaff = async (staffId: string, staffEmail?: string) => {
     setRemovingStaffId(staffId);
     try {
       await updateDoc(doc(db, 'users', staffId), {
         franchiseId: null,
         role: 'user'
       });
+      if (staffEmail && franchise?.id) {
+        await updateDoc(doc(db, 'franchises', franchise.id), {
+          removedEmails: arrayUnion(staffEmail.toLowerCase().trim())
+        }).catch(() => {});
+      }
       setStaffUsers(prev => prev.filter(s => s.uid !== staffId));
     } catch (err) {
       console.error("Failed to remove staff:", err);
-      // Fallback alert is okay, but won't block execution if blocked by iframe, 
-      // however let's prefer console error + local UI error if possible.
     } finally {
       setRemovingStaffId(null);
       setStaffRemoveConfirmId(null);
@@ -288,7 +321,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
       setSettingsData({
         enableStick: settings.enableStick ?? true,
         enablePot: settings.enablePot ?? true,
-        enablePlate: settings.enablePlate ?? true,
+        enablePlate: settings.enablePlate ?? false,
         enablePlatformFee: settings.enablePlatformFee ?? false,
         stickPrice: (settings.stickPrice || 40).toString(),
         potPrice: (settings.potPrice || 50).toString(),
@@ -2089,9 +2122,20 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                 <CardTitle className="text-sm font-black uppercase tracking-widest flex items-center gap-2 text-slate-800 dark:text-slate-200">
                   <Users className="w-4 h-4 text-indigo-500" /> Staff & Team Details
                 </CardTitle>
-                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  {staffUsers.length} {staffUsers.length === 1 ? 'Member' : 'Members'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {staffUsers.length} {staffUsers.length === 1 ? 'Member' : 'Members'}
+                  </span>
+                  {staffUsers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setRemoveAllConfirm(true)}
+                      className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-rose-500 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-sm"
+                    >
+                      Remove All
+                    </button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="p-4 sm:p-6 space-y-4">
                 {loadingStaff ? (
@@ -2193,6 +2237,17 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                               )}
                             </div>
                           </div>
+
+                          {/* Remove button */}
+                          <div className="pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveStaff(staff.uid, staff.email)}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 transition-colors cursor-pointer"
+                            >
+                              Remove Access
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -2200,6 +2255,36 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {/* Remove All Staff Confirmation Modal */}
+          {removeAllConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl">
+                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase">Remove All Staff Members?</h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  This will remove all {staffUsers.length} registered staff members from your franchise. Are you sure?
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setRemoveAllConfirm(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={clearingAll}
+                    onClick={handleRemoveAllStaff}
+                    className="px-4 py-2 rounded-xl text-xs font-black uppercase bg-rose-600 hover:bg-rose-700 text-white shadow-md cursor-pointer flex items-center gap-2"
+                  >
+                    {clearingAll && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Yes, Remove All</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}

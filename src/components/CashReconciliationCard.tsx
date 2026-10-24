@@ -18,7 +18,7 @@ import {
 import { Denominations, DailyDenominationsRecord } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { format, parseISO } from 'date-fns';
-import { getDenomsStorageKey } from '../store';
+import { getDenomsStorageKey, saveDailyDenominations } from '../store';
 
 interface CashReconciliationCardProps {
   date?: string;
@@ -113,6 +113,7 @@ export default function CashReconciliationCard({
     if (date) {
       try {
         localStorage.setItem(getDenomsStorageKey(date, franchiseId), JSON.stringify(updated));
+        saveDailyDenominations(date, updated, false, franchiseId).catch(() => {});
       } catch {}
     }
 
@@ -128,6 +129,7 @@ export default function CashReconciliationCard({
     if (date) {
       try {
         localStorage.setItem(getDenomsStorageKey(date, franchiseId), JSON.stringify(zeroed));
+        saveDailyDenominations(date, zeroed, false, franchiseId).catch(() => {});
       } catch {}
     }
     if (onDenominationsChange) {

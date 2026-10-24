@@ -33,6 +33,7 @@ import {
 } from '../lib/supabase';
 import { migrateAllDataToSupabase } from '../lib/supabaseService';
 import { useEntries, useExpenses, useSpecialOrders, useInventory, useSettings, useSync } from '../store';
+import { isSuperAdminEmail } from '../lib/utils';
 import { useFranchise } from '../context/FranchiseContext';
 import { auth } from '../lib/firebase';
 
@@ -219,7 +220,7 @@ END $$;
 
 export default function SupabaseManager() {
   const { profile } = useFranchise();
-  const isSuperAdmin = profile?.role === 'superadmin' || auth.currentUser?.email === 'superadmin@gmail.com';
+  const isSuperAdmin = profile?.role === 'superadmin' || isSuperAdminEmail(auth.currentUser?.email);
 
   const { entries } = useEntries();
   const { expenses } = useExpenses();

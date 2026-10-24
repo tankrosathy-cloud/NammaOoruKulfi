@@ -289,8 +289,7 @@ export default function AddEntry({
   const discount = parseInt(formData.discount) || 0;
   const cashBagLoaded = parseInt(formData.cashBagLoaded) || 0;
   
-  const hasSalesOrCash = stickSold > 0 || potSold > 0 || plateSold > 0 || parseInt(formData.cashBagTotal) > 0 || parseInt(formData.phonePe) > 0;
-  const platformRent = (hasSalesOrCash && settings.enablePlatformFee) ? (settings.platformFee || 0) : 0;
+  const platformRent = settings.enablePlatformFee ? (settings.platformFee || 0) : 0;
   
   const additionalExpenses = parseInt(formData.additionalExpenses) || 0;
   const bonus = parseInt(formData.bonus) || 0;

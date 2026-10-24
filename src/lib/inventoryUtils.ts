@@ -75,9 +75,13 @@ export function calculateAvailableStock(
 ): AvailableStockStats {
   const baseStockDate = inventory?.lastUpdatedDate ? inventory.lastUpdatedDate.split('T')[0] : '2026-08-01';
   
-  const baseStickQty = Math.max(0, Number(inventory?.stickQuantity) || 0);
-  const basePotQty = Math.max(0, Number(inventory?.potQuantity) || 0);
-  const basePlateQty = Math.max(0, Number(inventory?.plateQuantity) || 0);
+  const flavoursStickSum = (inventory?.stickFlavours || []).reduce((s, f) => s + (f.quantity || 0), 0);
+  const flavoursPotSum = (inventory?.potFlavours || []).reduce((s, f) => s + (f.quantity || 0), 0);
+  const flavoursPlateSum = (inventory?.plateFlavours || []).reduce((s, f) => s + (f.quantity || 0), 0);
+
+  const baseStickQty = Math.max(0, Number(inventory?.stickQuantity) || flavoursStickSum || 0);
+  const basePotQty = Math.max(0, Number(inventory?.potQuantity) || flavoursPotSum || 0);
+  const basePlateQty = Math.max(0, Number(inventory?.plateQuantity) || flavoursPlateSum || 0);
 
   const relevantEntries = entries.filter(e => e.date >= baseStockDate);
   const relevantSpecials = specialOrders.filter(s => s.date >= baseStockDate);

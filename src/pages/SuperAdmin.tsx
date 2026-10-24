@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { signOut } from 'firebase/auth';
 import { Franchise, UserProfile } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { useTheme } from '../context/ThemeContext';
-import { Users, Store, Shield, Key, Eye, RotateCw, Database } from 'lucide-react';
+import { Users, Store, Shield, Key, Eye, RotateCw, Database, LogOut } from 'lucide-react';
 import { useFranchise } from '../context/FranchiseContext';
 import { Button } from '../components/ui/button';
 import SupabaseManager from '../components/SupabaseManager';
@@ -64,22 +65,34 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
             Super Admin Control Panel
           </h1>
         </div>
-        <button
-          id="superadmin-refresh-btn"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors ${
-            isRefreshing
-              ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400'
-              : isDark 
-                ? 'border-slate-800 text-cyan-400 hover:bg-slate-900/50 bg-slate-900/30' 
-                : 'border-slate-300 text-cyan-700 hover:bg-slate-100 bg-white shadow-sm'
-          }`}
-          title="Reload page with latest data"
-        >
-          <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
-          <span>{isRefreshing ? 'Reloading...' : 'Refresh'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            id="superadmin-refresh-btn"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+              isRefreshing
+                ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-400'
+                : isDark 
+                  ? 'border-slate-800 text-cyan-400 hover:bg-slate-900/50 bg-slate-900/30' 
+                  : 'border-slate-300 text-cyan-700 hover:bg-slate-100 bg-white shadow-sm'
+            }`}
+            title="Reload page with latest data"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+            <span>{isRefreshing ? 'Reloading...' : 'Refresh'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => signOut(auth)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-sm"
+            title="Sign Out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
 
       {/* Superadmin Tab Navigation */}

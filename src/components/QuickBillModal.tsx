@@ -640,9 +640,9 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className={isEmbedded ? "flex flex-col h-full w-full bg-[#0f172a] overflow-hidden pb-24 relative z-10" : "fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md"}>
       <div 
-        className={`w-full max-w-5xl h-full max-h-full sm:h-[92vh] sm:max-h-[92vh] sm:rounded-2xl shadow-2xl overflow-hidden border-0 sm:border flex flex-col transition-all duration-300 ${
+        className={isEmbedded ? "w-full h-full flex flex-col overflow-hidden" : `w-full max-w-5xl h-full max-h-full sm:h-[92vh] sm:max-h-[92vh] sm:rounded-2xl shadow-2xl overflow-hidden border-0 sm:border flex flex-col transition-all duration-300 ${
           isDark 
             ? 'bg-[#0f172a] border-slate-800 text-white shadow-cyan-950/20' 
             : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/40'

@@ -62,7 +62,7 @@ export function isUserAdminOrOwner(userOrEmail?: string | null): boolean {
 const DEFAULT_SETTINGS: Settings = {
   enableStick: true,
   enablePot: true,
-  enablePlate: true,
+  enablePlate: false,
   enablePlatformFee: false,
   stickPrice: 40,
   potPrice: 50,
@@ -1370,13 +1370,15 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
         const rawData = inventorySnap.data() as InventoryStock;
         const data: InventoryStock = {
           ...rawData,
+          stickQuantity: (rawData.stickQuantity !== undefined && rawData.stickQuantity !== null) ? rawData.stickQuantity : 0,
+          potQuantity: (rawData.potQuantity !== undefined && rawData.potQuantity !== null) ? rawData.potQuantity : 0,
           stickFlavours: arrangeFlavoursInSequence(rawData.stickFlavours, MASTER_STICK_FLAVOURS),
           potFlavours: arrangeFlavoursInSequence(rawData.potFlavours, MASTER_POT_FLAVOURS)
         };
         setInventory(data);
         try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
       } else if (inventorySnap) {
-        setInventory(DEFAULT_INVENTORY);
+        // keep previous if present
       }
       setInventoryLoading(false);
 
@@ -1511,9 +1513,16 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
           doc(db, 'inventory', activeFid || 'global'),
           (docSnap) => {
             if (docSnap.exists()) {
-              setInventory(docSnap.data() as InventoryStock);
+              const data = docSnap.data() as InventoryStock;
+              setInventory(prev => ({
+                ...data,
+                stickQuantity: (data.stickQuantity !== undefined && data.stickQuantity !== null) ? data.stickQuantity : (prev?.stickQuantity || 0),
+                potQuantity: (data.potQuantity !== undefined && data.potQuantity !== null) ? data.potQuantity : (prev?.potQuantity || 0),
+                stickFlavours: (data.stickFlavours && data.stickFlavours.length > 0) ? data.stickFlavours : (prev?.stickFlavours || MASTER_STICK_FLAVOURS.map(name => ({ name, quantity: 0 }))),
+                potFlavours: (data.potFlavours && data.potFlavours.length > 0) ? data.potFlavours : (prev?.potFlavours || MASTER_POT_FLAVOURS.map(name => ({ name, quantity: 0 })))
+              }));
             } else {
-              setInventory(DEFAULT_INVENTORY);
+              // keep previous if present
             }
             setInventoryLoading(false);
           },

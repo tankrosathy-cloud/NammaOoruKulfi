@@ -3,6 +3,7 @@ import { auth, db } from '../lib/firebase';
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { UserProfile, Franchise } from '../types';
 import { setCurrentFranchiseId, ADMIN_USERNAMES } from '../store';
+import { isSuperAdminEmail } from '../lib/utils';
 
 export const SATHY_FRANCHISE_ID = 'F-1788087111153';
 export const SATHY_FRANCHISE_NAME = 'Namma Ooru Kulfi (Sathyamangalam)';
@@ -29,6 +30,25 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
         const userEmail = (user.email || '').toLowerCase().trim();
+
+        // Check if user's email was revoked/removed by franchise owner
+        try {
+          const fDocCheck = await getDoc(doc(db, 'franchises', SATHY_FRANCHISE_ID));
+          if (fDocCheck.exists()) {
+            const fData = fDocCheck.data() as Franchise & { removedEmails?: string[] };
+            const removedList = (fData.removedEmails || []).map(e => e.toLowerCase().trim());
+            const masterOwnerEmails = ['tankrosathy@gmail.com', 'nammaoorukulfisathy@gmail.com'];
+            if (removedList.includes(userEmail) && !masterOwnerEmails.includes(userEmail)) {
+              await auth.signOut();
+              setProfile(null);
+              setFranchise(null);
+              setLoading(false);
+              alert("Access Revoked: Your account access has been removed by the franchise owner.");
+              return;
+            }
+          }
+        } catch (e) {}
+
         const staffEmails = ['rabertraj777@gmail.com', 'dheepakkumar.m143@gmail.com'];
         const isStaffUser = staffEmails.includes(userEmail);
 
@@ -66,6 +86,9 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
           const cachedFStr = localStorage.getItem(`namma_franchise_${user.uid}`) || localStorage.getItem('namma_last_franchise');
           if (cachedPStr && !isStaffUser) {
             const cachedP = JSON.parse(cachedPStr) as UserProfile;
+            if (cachedP.franchiseId === SATHY_FRANCHISE_ID && !isMasterOwner) {
+              cachedP.role = 'staff';
+            }
             setProfile(cachedP);
             setCurrentFranchiseId(cachedP.franchiseId);
             if (cachedFStr) {
@@ -95,7 +118,7 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
           setCurrentFranchiseId(SATHY_FRANCHISE_ID);
           setLoading(false);
           hasCache = true;
-        } else if (userEmail === 'superadmin@gmail.com') {
+        } else if (isSuperAdminEmail(userEmail)) {
           const superProfile: UserProfile = {
             uid: user.uid,
             email: user.email || 'superadmin@gmail.com',
@@ -189,6 +212,11 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
             resolvedFranchise = sathyFranchise;
           }
 
+          // Enforce that only nammaoorukulfisathy@gmail.com / tankrosathy@gmail.com can be owner of Sathyamangalam franchise
+          if (resolvedProfile && resolvedProfile.franchiseId === SATHY_FRANCHISE_ID && !isMasterOwner) {
+            resolvedProfile.role = 'staff';
+          }
+
           if (resolvedProfile) {
             setProfile(resolvedProfile);
             setCurrentFranchiseId(resolvedProfile.franchiseId);
@@ -238,7 +266,7 @@ export const FranchiseProvider = ({ children }: { children: ReactNode }) => {
             }
           } else {
             // Handle superadmin special case
-            if (userEmail === 'superadmin@gmail.com') {
+            if (isSuperAdminEmail(userEmail)) {
               const superProfile: UserProfile = {
                 uid: user.uid,
                 email: user.email || 'superadmin@gmail.com',

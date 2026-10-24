@@ -42,3 +42,8 @@ export function isDateInMonth(dateStr: string | undefined | null, targetDate: Da
   
   return false;
 }
+
+export function isSuperAdminEmail(email?: string | null): boolean {
+  const e = (email || '').toLowerCase().trim();
+  return e === 'superadmin@gmail.com' || e.startsWith('superadmin');
+}
