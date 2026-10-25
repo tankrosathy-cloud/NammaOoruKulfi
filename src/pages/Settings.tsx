@@ -58,6 +58,7 @@ import ExportData from '../components/ExportData';
 import MigrateLocalData from '../components/MigrateLocalData';
 import SupabaseManager from '../components/SupabaseManager';
 import FlavourStockSheet from '../components/FlavourStockSheet';
+import CartPromoPoster from '../components/CartPromoPoster';
 import { calculateAvailableStock, calculateDailyStockLedger, DayStockLedgerRow } from '../lib/inventoryUtils';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
 
@@ -2440,6 +2441,18 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
               {savingSettings ? 'SAVING...' : 'SAVE SETTINGS'}
             </Button>
           </form>
+
+          {/* Cart Promo & Loyalty Poster Section */}
+          <Card className="border border-indigo-200 dark:border-indigo-900/50">
+            <CardContent className="p-6">
+              <CartPromoPoster 
+                storeName={settings?.upiName || 'Namma Ooru Kulfi'} 
+                tagline={settings?.storeTagline} 
+                address={settings?.storeAddress} 
+                phone={settings?.storePhone} 
+              />
+            </CardContent>
+          </Card>
 
           {/* Password Reset Section */}
           <Card className="border border-pink-200 dark:border-pink-900/50">

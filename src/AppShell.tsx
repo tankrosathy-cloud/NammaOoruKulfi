@@ -54,7 +54,7 @@ function AppShellContent() {
   }, [effectiveRole]);
 
   useEffect(() => {
-    const handleOpenQuickPos = () => setIsQuickBillOpen(true);
+    const handleOpenQuickPos = () => navigateTab('quickbill');
     window.addEventListener('open-quick-pos', handleOpenQuickPos);
     return () => window.removeEventListener('open-quick-pos', handleOpenQuickPos);
   }, []);
@@ -295,7 +295,7 @@ function AppShellContent() {
 
           <button 
             id="header-quick-pos-btn"
-            onClick={() => setIsQuickBillOpen(true)}
+            onClick={() => navigateTab('quickbill')}
             className="transition-all duration-200 h-7 w-7 sm:h-auto sm:w-auto p-1 sm:px-2.5 rounded-lg border border-pink-500/40 bg-pink-500/10 hover:bg-pink-500/20 text-pink-600 dark:text-pink-400 flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 shadow-sm shadow-pink-500/10 shrink-0"
             title="Quick Counter POS & Digital Receipt"
             aria-label="Quick Counter POS & Digital Receipt"
@@ -403,7 +403,7 @@ function AppShellContent() {
         {activeTab === 'dashboard' && navRole === 'owner' && (
           <Dashboard 
             onNavigateToEntry={handleEditEntry} 
-            onOpenQuickBill={() => setIsQuickBillOpen(true)} 
+            onOpenQuickBill={() => navigateTab('quickbill')} 
           />
         )}
         {activeTab === 'quickbill' && <QuickBillModal isOpen={true} onClose={() => navigateTab('add')} isEmbedded={true} />}
