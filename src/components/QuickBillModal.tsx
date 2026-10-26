@@ -131,7 +131,8 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
-  const [redeemType, setRedeemType] = useState<'none' | 'stick' | 'pot'>('none');
+  const [redeemSticks, setRedeemSticks] = useState<number>(0);
+  const [redeemPots, setRedeemPots] = useState<number>(0);
 
   const todayBills = useMemo(() => {
     return bills.filter(b => b.date === todayStr);
@@ -201,20 +202,39 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   // Customer retail bills in POS do NOT include platform fee (platform fee is a daily stall rent expense)
   const platformFee = 0;
 
+  // Helper to normalize phone numbers to last 10 digits
+  const getCleanPhone = (phone?: string) => {
+    if (!phone) return '';
+    const digits = phone.replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+  };
+
   // Loyalty points calculations
-  const cleanCustomerPhone = customerPhone.replace(/\D/g, '');
-  const customerPointsBalance = useMemo(() => {
-    if (cleanCustomerPhone.length < 10) return 0;
+  const cleanCustomerPhone = useMemo(() => getCleanPhone(customerPhone), [customerPhone]);
+
+  const customerPointsSummary = useMemo(() => {
+    if (cleanCustomerPhone.length < 10) {
+      return { lifetimeEarned: 0, lifetimeRedeemed: 0, balance: 0, billCount: 0 };
+    }
     let earned = 0;
     let redeemed = 0;
+    let billCount = 0;
     bills.forEach(b => {
-      if ((b.customerPhone || '').replace(/\D/g, '') === cleanCustomerPhone) {
+      if (getCleanPhone(b.customerPhone) === cleanCustomerPhone) {
         earned += (b.pointsEarned || 0);
         redeemed += (b.pointsRedeemed || 0);
+        billCount++;
       }
     });
-    return Math.max(0, earned - redeemed);
+    return {
+      lifetimeEarned: earned,
+      lifetimeRedeemed: redeemed,
+      balance: Math.max(0, earned - redeemed),
+      billCount
+    };
   }, [bills, cleanCustomerPhone]);
+
+  const customerPointsBalance = customerPointsSummary.balance;
 
   const cartSticksCount = useMemo(() => {
     return cartItems.filter(i => i.category === 'stick').reduce((s, i) => s + i.quantity, 0);
@@ -224,25 +244,34 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     return cartItems.filter(i => i.category === 'pot').reduce((s, i) => s + i.quantity, 0);
   }, [cartItems]);
 
-  const pointsEarnedThisOrder = useMemo(() => {
-    return (cartSticksCount + cartPotsCount) * 3;
-  }, [cartSticksCount, cartPotsCount]);
+  const cartPlatesCount = useMemo(() => {
+    return cartItems.filter(i => i.category === 'plate').reduce((s, i) => s + i.quantity, 0);
+  }, [cartItems]);
+
+  const stickPrice = settings.stickPrice || 40;
+  const potPrice = settings.potPrice || 50;
+
+  // Points redeemed: 40 pts for Stick Kulfi, 50 pts for Pot Kulfi
+  const pointsRedeemedThisOrder = useMemo(() => {
+    return (redeemSticks * 40) + (redeemPots * 50);
+  }, [redeemSticks, redeemPots]);
 
   const redemptionDiscount = useMemo(() => {
-    if (redeemType === 'stick' && customerPointsBalance >= 40) {
-      return settings.stickPrice || 40;
-    }
-    if (redeemType === 'pot' && customerPointsBalance >= 50) {
-      return settings.potPrice || 50;
-    }
-    return 0;
-  }, [redeemType, customerPointsBalance, settings.stickPrice, settings.potPrice]);
+    return (redeemSticks * stickPrice) + (redeemPots * potPrice);
+  }, [redeemSticks, redeemPots, stickPrice, potPrice]);
 
-  const pointsRedeemedThisOrder = useMemo(() => {
-    if (redeemType === 'stick' && customerPointsBalance >= 40) return 40;
-    if (redeemType === 'pot' && customerPointsBalance >= 50) return 50;
-    return 0;
-  }, [redeemType, customerPointsBalance]);
+  // Points earned on paid items: 3 points per paid stick, pot, or plate
+  const pointsEarnedThisOrder = useMemo(() => {
+    const paidSticks = Math.max(0, cartSticksCount - redeemSticks);
+    const paidPots = Math.max(0, cartPotsCount - redeemPots);
+    const paidPlates = cartPlatesCount;
+    return (paidSticks + paidPots + paidPlates) * 3;
+  }, [cartSticksCount, cartPotsCount, cartPlatesCount, redeemSticks, redeemPots]);
+
+  const projectedPointsBalance = useMemo(() => {
+    if (cleanCustomerPhone.length < 10) return 0;
+    return Math.max(0, customerPointsBalance - pointsRedeemedThisOrder + pointsEarnedThisOrder);
+  }, [cleanCustomerPhone, customerPointsBalance, pointsRedeemedThisOrder, pointsEarnedThisOrder]);
 
   const grandTotal = useMemo(() => {
     if (paymentMethod === 'complimentary') return 0;
@@ -462,11 +491,73 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     setCartItems(prev => prev.filter(i => i.id !== itemId));
   };
 
+  // Loyalty redemption handlers
+  const handleAddStickRedemption = () => {
+    const pointsNeeded = 40;
+    const currentUsed = (redeemSticks * 40) + (redeemPots * 50);
+    if (customerPointsBalance - currentUsed < pointsNeeded) return;
+
+    triggerHaptic();
+    playBeep(850, 70);
+
+    // If cart has fewer sticks than the new redemption count, auto-add a Stick Kulfi
+    if (cartSticksCount < redeemSticks + 1) {
+      const firstStick = catalogStickItems.find(s => (s.stockAvailable === undefined || s.stockAvailable > 0)) || catalogStickItems[0];
+      const sName = firstStick ? firstStick.name : 'Malai Stick Kulfi';
+      handleAddItem({
+        name: sName,
+        category: 'stick',
+        flavour: firstStick?.flavour || 'Malai',
+        price: stickPrice
+      });
+    }
+
+    setRedeemSticks(prev => prev + 1);
+  };
+
+  const handleRemoveStickRedemption = () => {
+    if (redeemSticks <= 0) return;
+    triggerHaptic();
+    playBeep(500, 50);
+    setRedeemSticks(prev => Math.max(0, prev - 1));
+  };
+
+  const handleAddPotRedemption = () => {
+    const pointsNeeded = 50;
+    const currentUsed = (redeemSticks * 40) + (redeemPots * 50);
+    if (customerPointsBalance - currentUsed < pointsNeeded) return;
+
+    triggerHaptic();
+    playBeep(850, 70);
+
+    // If cart has fewer pots than the new redemption count, auto-add a Pot Kulfi
+    if (cartPotsCount < redeemPots + 1) {
+      const firstPot = catalogPotItems.find(p => (p.stockAvailable === undefined || p.stockAvailable > 0)) || catalogPotItems[0];
+      const pName = firstPot ? firstPot.name : 'Malai Pot Kulfi';
+      handleAddItem({
+        name: pName,
+        category: 'pot',
+        flavour: firstPot?.flavour || 'Malai',
+        price: potPrice
+      });
+    }
+
+    setRedeemPots(prev => prev + 1);
+  };
+
+  const handleRemovePotRedemption = () => {
+    if (redeemPots <= 0) return;
+    triggerHaptic();
+    playBeep(500, 50);
+    setRedeemPots(prev => Math.max(0, prev - 1));
+  };
+
   const handleClearCart = () => {
     triggerHaptic();
     setCartItems([]);
     setDiscount(0);
-    setRedeemType('none');
+    setRedeemSticks(0);
+    setRedeemPots(0);
     setCashTendered('');
     setSplitCashAmount('');
     setCustomerPhone('');
@@ -532,7 +623,8 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       syncedToDailyEntry: settings.autoSyncBillToEntry !== false,
       userId: auth.currentUser?.uid || '',
       pointsEarned: pointsEarnedThisOrder,
-      pointsRedeemed: pointsRedeemedThisOrder
+      pointsRedeemed: pointsRedeemedThisOrder,
+      totalLoyaltyPoints: projectedPointsBalance
     };
 
     // Instant UI transition so staff is never stuck
@@ -548,6 +640,44 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       console.error("Failed to sync bill to cloud in background:", err);
     }
   };
+
+  // Receipt customer points data memo
+  const receiptCustomerPhone = useMemo(() => {
+    return currentBill?.customerPhone ? getCleanPhone(currentBill.customerPhone) : '';
+  }, [currentBill]);
+
+  const receiptLoyaltyData = useMemo(() => {
+    if (!currentBill || !receiptCustomerPhone || receiptCustomerPhone.length < 10) {
+      return { earned: 0, redeemed: 0, totalBalance: 0, lifetimeEarned: 0 };
+    }
+    
+    let earnedSum = 0;
+    let redeemedSum = 0;
+    bills.forEach(b => {
+      if (getCleanPhone(b.customerPhone) === receiptCustomerPhone) {
+        earnedSum += (b.pointsEarned || 0);
+        redeemedSum += (b.pointsRedeemed || 0);
+      }
+    });
+
+    const isAlreadyInBills = bills.some(b => b.id === currentBill.id);
+    if (!isAlreadyInBills) {
+      earnedSum += (currentBill.pointsEarned || 0);
+      redeemedSum += (currentBill.pointsRedeemed || 0);
+    }
+
+    const availableBalance = Math.max(0, earnedSum - redeemedSum);
+    const totalBalance = currentBill.totalLoyaltyPoints !== undefined 
+      ? currentBill.totalLoyaltyPoints 
+      : availableBalance;
+
+    return {
+      earned: currentBill.pointsEarned || 0,
+      redeemed: currentBill.pointsRedeemed || 0,
+      totalBalance,
+      lifetimeEarned: earnedSum
+    };
+  }, [currentBill, receiptCustomerPhone, bills]);
 
   // Start a fresh new customer transaction
   const handleNextCustomer = () => {
@@ -588,17 +718,43 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     });
 
     if (bill.discount > 0) {
-      text += `Discount: -₹${bill.discount}\n`;
+      text += `Discount / Free Reward: -₹${bill.discount}\n`;
     }
     if (bill.platformFee > 0) {
       text += `Platform Fee: +₹${bill.platformFee}\n`;
     }
 
-    if (bill.pointsEarned && bill.pointsEarned > 0) {
-      text += `⭐ *Loyalty Points Earned:* +${bill.pointsEarned} pts\n`;
-    }
-    if (bill.pointsRedeemed && bill.pointsRedeemed > 0) {
-      text += `🎁 *Points Redeemed:* -${bill.pointsRedeemed} pts (Free item claimed)\n`;
+    if (bill.customerPhone) {
+      const cleanPhone = getCleanPhone(bill.customerPhone);
+      const ptsEarned = bill.pointsEarned || 0;
+      const ptsRedeemed = bill.pointsRedeemed || 0;
+
+      let totalPts = bill.totalLoyaltyPoints;
+      if (totalPts === undefined) {
+        let earnedSum = 0;
+        let redeemedSum = 0;
+        bills.forEach(b => {
+          if (getCleanPhone(b.customerPhone) === cleanPhone) {
+            earnedSum += (b.pointsEarned || 0);
+            redeemedSum += (b.pointsRedeemed || 0);
+          }
+        });
+        totalPts = Math.max(0, earnedSum - redeemedSum);
+      }
+
+      text += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      text += `⭐ *Points Earned (This Order):* +${ptsEarned} pts\n`;
+      if (ptsRedeemed > 0) {
+        text += `🎁 *Points Redeemed:* -${ptsRedeemed} pts (Free Kulfi Claimed)\n`;
+      }
+      text += `🏆 *Total Loyalty Points Balance:* ${totalPts} pts\n`;
+      if (totalPts >= 50) {
+        text += `🎉 _You have ${totalPts} pts! Redeem a FREE Pot Kulfi (50 pts) or Stick Kulfi (40 pts) on your next visit!_\n`;
+      } else if (totalPts >= 40) {
+        text += `🎉 _You have ${totalPts} pts! Redeem a FREE Stick Kulfi (40 pts) on your next visit!_\n`;
+      } else {
+        text += `💡 _Earn ${40 - totalPts} more pts to claim your next FREE Kulfi!_\n`;
+      }
     }
 
     text += `━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -1349,79 +1505,190 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 )}
 
                 {/* Customer mobile number & Loyalty Points */}
-                {cartItems.length > 0 && (
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-slate-400">
-                      <span>Customer Mobile & Loyalty</span>
-                      <span className="text-amber-500 font-bold">3 pts / stick or pot</span>
-                    </div>
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                        +91
-                      </span>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        maxLength={10}
-                        placeholder="9876543210 (Customer Phone)"
-                        value={customerPhone}
-                        onChange={e => {
-                          setCustomerPhone(e.target.value.replace(/\D/g, ''));
-                          setRedeemType('none');
-                        }}
-                        className="w-full h-8 pl-10 pr-3 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                    </div>
-
-                    {cleanCustomerPhone.length === 10 && (
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-black text-amber-800 dark:text-amber-300">
-                            ⭐ Points Balance: <span className="font-mono">{customerPointsBalance} pts</span>
-                          </span>
-                          <span className="text-[10px] text-amber-700/80 dark:text-amber-400 font-bold">
-                            (+{pointsEarnedThisOrder} pts earned today)
-                          </span>
-                        </div>
-
-                        {/* Redemption buttons */}
-                        <div className="flex items-center gap-1.5 pt-1">
-                          {customerPointsBalance >= 40 && (
-                            <button
-                              type="button"
-                              onClick={() => setRedeemType(redeemType === 'stick' ? 'none' : 'stick')}
-                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
-                                redeemType === 'stick'
-                                  ? 'bg-amber-600 text-white shadow-md'
-                                  : 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
-                              }`}
-                            >
-                              {redeemType === 'stick' ? '✓ Free Stick Applied' : `🎁 Redeem Stick (40 pts)`}
-                            </button>
-                          )}
-                          {customerPointsBalance >= 50 && (
-                            <button
-                              type="button"
-                              onClick={() => setRedeemType(redeemType === 'pot' ? 'none' : 'pot')}
-                              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
-                                redeemType === 'pot'
-                                  ? 'bg-amber-600 text-white shadow-md'
-                                  : 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
-                              }`}
-                            >
-                              {redeemType === 'pot' ? '✓ Free Pot Applied' : `🎁 Redeem Pot (50 pts)`}
-                            </button>
-                          )}
-                          {customerPointsBalance < 40 && (
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
-                              Need {40 - customerPointsBalance} more pts to redeem a free Stick (40 pts) or Pot (50 pts).
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-slate-400">
+                    <span>Customer Mobile & Loyalty</span>
+                    <span className="text-amber-500 font-bold">3 pts / kulfi</span>
                   </div>
-                )}
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="9876543210 (Customer Phone)"
+                      value={customerPhone}
+                      onChange={e => {
+                        setCustomerPhone(e.target.value.replace(/\D/g, ''));
+                        setRedeemSticks(0);
+                        setRedeemPots(0);
+                      }}
+                      className="w-full h-8 pl-10 pr-3 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500 text-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  {cleanCustomerPhone.length === 10 && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-black text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                          <span>⭐ Points Balance:</span>
+                          <span className="font-mono text-sm font-black underline decoration-amber-500">{customerPointsBalance} pts</span>
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 dark:bg-emerald-500/20 px-2 py-0.5 rounded-full">
+                          +{pointsEarnedThisOrder} pts this order
+                        </span>
+                      </div>
+
+                      {/* Redemption controls when customer has >= 40 points */}
+                      {customerPointsBalance >= 40 ? (
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center justify-between text-[10px] font-black uppercase text-amber-800 dark:text-amber-300">
+                            <span>🎁 Redeem Loyalty Rewards</span>
+                            <span className="text-slate-500 font-medium">
+                              Remaining: {Math.max(0, customerPointsBalance - pointsRedeemedThisOrder)} pts
+                            </span>
+                          </div>
+
+                          {/* Stick Kulfi Reward (40 pts) */}
+                          {redeemSticks > 0 ? (
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-amber-500/20 border border-amber-500/40">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs">🍦</span>
+                                <div>
+                                  <span className="text-xs font-black text-amber-900 dark:text-amber-200 block">
+                                    {redeemSticks}x Free Stick Kulfi
+                                  </span>
+                                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                                    -₹{redeemSticks * stickPrice} discount ({redeemSticks * 40} pts)
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveStickRedemption}
+                                  className="w-6 h-6 rounded bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-black text-xs flex items-center justify-center hover:bg-amber-300 cursor-pointer active:scale-95"
+                                  title="Remove 1 stick reward"
+                                >
+                                  -
+                                </button>
+                                <span className="w-5 text-center font-mono font-black text-xs text-amber-900 dark:text-amber-100">
+                                  {redeemSticks}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleAddStickRedemption}
+                                  disabled={customerPointsBalance - pointsRedeemedThisOrder < 40}
+                                  className="w-6 h-6 rounded bg-amber-600 text-white font-black text-xs flex items-center justify-center hover:bg-amber-700 cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Add another stick reward"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleAddStickRedemption}
+                              disabled={customerPointsBalance - pointsRedeemedThisOrder < 40}
+                              className="w-full py-1.5 px-2.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center justify-between cursor-pointer active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <span>🍦</span>
+                                <span>Redeem Stick Kulfi</span>
+                              </span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-900 dark:text-amber-200">
+                                40 pts (Save ₹{stickPrice})
+                              </span>
+                            </button>
+                          )}
+
+                          {/* Pot Kulfi Reward (50 pts) */}
+                          {customerPointsBalance >= 50 || redeemPots > 0 ? (
+                            redeemPots > 0 ? (
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-amber-500/20 border border-amber-500/40">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs">🏺</span>
+                                  <div>
+                                    <span className="text-xs font-black text-amber-900 dark:text-amber-200 block">
+                                      {redeemPots}x Free Pot Kulfi
+                                    </span>
+                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
+                                      -₹{redeemPots * potPrice} discount ({redeemPots * 50} pts)
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={handleRemovePotRedemption}
+                                    className="w-6 h-6 rounded bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-black text-xs flex items-center justify-center hover:bg-amber-300 cursor-pointer active:scale-95"
+                                    title="Remove 1 pot reward"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="w-5 text-center font-mono font-black text-xs text-amber-900 dark:text-amber-100">
+                                    {redeemPots}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleAddPotRedemption}
+                                    disabled={customerPointsBalance - pointsRedeemedThisOrder < 50}
+                                    className="w-6 h-6 rounded bg-amber-600 text-white font-black text-xs flex items-center justify-center hover:bg-amber-700 cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Add another pot reward"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleAddPotRedemption}
+                                disabled={customerPointsBalance - pointsRedeemedThisOrder < 50}
+                                className="w-full py-1.5 px-2.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center justify-between cursor-pointer active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <span className="flex items-center gap-1.5">
+                                  <span>🏺</span>
+                                  <span>Redeem Pot Kulfi</span>
+                                </span>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-900 dark:text-amber-200">
+                                  50 pts (Save ₹{potPrice})
+                                </span>
+                              </button>
+                            )
+                          ) : null}
+
+                          {/* Projected Balance After Bill */}
+                          <div className="flex items-center justify-between text-[10px] pt-1 border-t border-amber-500/20 text-amber-800 dark:text-amber-300 font-medium">
+                            <span>Balance after this bill:</span>
+                            <span className="font-mono font-black text-xs">{projectedPointsBalance} pts</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="w-full h-1.5 rounded-full bg-amber-500/20 overflow-hidden">
+                            <div 
+                              className="h-full bg-amber-500 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(100, (customerPointsBalance / 40) * 100)}%` }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                            Need {40 - customerPointsBalance} more pts to redeem a Free Stick Kulfi (40 pts) or Pot (50 pts).
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] pt-0.5 text-slate-500 font-medium">
+                            <span>Balance after this order:</span>
+                            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                              {projectedPointsBalance} pts
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Pay Box */}
@@ -1436,11 +1703,18 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       ₹{grandTotal}
                     </span>
                   </div>
-                  {discount > 0 && (
-                    <span className="text-[10px] font-bold text-emerald-500">
-                      ₹{discount} discount applied
-                    </span>
-                  )}
+                  <div className="text-right space-y-0.5">
+                    {discount > 0 && (
+                      <span className="text-[10px] font-bold text-emerald-500 block">
+                        ₹{discount} discount applied
+                      </span>
+                    )}
+                    {redemptionDiscount > 0 && (
+                      <span className="text-[10px] font-bold text-amber-500 block">
+                        🎁 Free Reward: -₹{redemptionDiscount} ({pointsRedeemedThisOrder} pts)
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Payment Method Selector */}
@@ -1694,15 +1968,30 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
 
                 {/* Loyalty Points Summary */}
                 {currentBill.customerPhone && (
-                  <div className="py-2.5 border-b border-dashed border-slate-300 dark:border-slate-700 space-y-1 text-[11px] font-sans">
-                    <div className="flex justify-between font-bold text-amber-600 dark:text-amber-400">
-                      <span>⭐ Loyalty Points Earned:</span>
-                      <span>+{currentBill.pointsEarned || 0} pts</span>
+                  <div className="py-2.5 border-b border-dashed border-slate-300 dark:border-slate-700 space-y-1.5 text-[11px] font-sans bg-amber-500/5 -mx-2 px-2.5 rounded-lg my-1">
+                    <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                      <span className="font-semibold">Customer Mobile:</span>
+                      <span className="font-mono font-bold">+91 {getCleanPhone(currentBill.customerPhone)}</span>
+                    </div>
+                    <div className="flex justify-between items-center font-bold text-amber-600 dark:text-amber-400">
+                      <span>⭐ Points Earned (Current Order):</span>
+                      <span className="font-mono">+{currentBill.pointsEarned || 0} pts</span>
                     </div>
                     {Boolean(currentBill.pointsRedeemed && currentBill.pointsRedeemed > 0) && (
-                      <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400">
+                      <div className="flex justify-between items-center font-bold text-emerald-600 dark:text-emerald-400">
                         <span>🎁 Points Redeemed:</span>
-                        <span>-{currentBill.pointsRedeemed} pts (Free item)</span>
+                        <span className="font-mono">-{currentBill.pointsRedeemed} pts (Free Kulfi Claimed)</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center font-black text-slate-900 dark:text-amber-300 pt-1 border-t border-amber-200/50 dark:border-amber-900/50">
+                      <span>🏆 Total Loyalty Points Balance:</span>
+                      <span className="font-mono text-xs text-amber-700 dark:text-amber-300">
+                        {receiptLoyaltyData.totalBalance} pts
+                      </span>
+                    </div>
+                    {receiptLoyaltyData.totalBalance >= 40 && (
+                      <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold text-center pt-0.5">
+                        🎉 Available to redeem a FREE Kulfi on next visit!
                       </div>
                     )}
                   </div>
@@ -1737,8 +2026,8 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                     <span>₹{currentBill.subtotal}</span>
                   </div>
                   {currentBill.discount > 0 && (
-                    <div className="flex justify-between text-emerald-500">
-                      <span>Discount:</span>
+                    <div className="flex justify-between text-emerald-500 font-bold">
+                      <span>Discount / Free Reward:</span>
                       <span>-₹{currentBill.discount}</span>
                     </div>
                   )}
@@ -1875,8 +2164,24 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       type="button"
                       onClick={() => {
                         if (customerPhone.trim().length >= 10 && currentBill) {
-                          const updated = { ...currentBill, customerPhone: customerPhone.trim() };
+                          const newPhone = customerPhone.trim();
+                          const clean = getCleanPhone(newPhone);
+                          let priorEarned = 0;
+                          let priorRedeemed = 0;
+                          bills.forEach(b => {
+                            if (b.id !== currentBill.id && getCleanPhone(b.customerPhone) === clean) {
+                              priorEarned += (b.pointsEarned || 0);
+                              priorRedeemed += (b.pointsRedeemed || 0);
+                            }
+                          });
+                          const updatedTotal = Math.max(0, priorEarned - (currentBill.pointsRedeemed || 0) + (currentBill.pointsEarned || 0));
+                          const updated: QuickBill = { 
+                            ...currentBill, 
+                            customerPhone: newPhone,
+                            totalLoyaltyPoints: updatedTotal
+                          };
                           setCurrentBill(updated);
+                          saveBill(updated, false).catch(console.error);
                           triggerHaptic();
                         }
                       }}
@@ -2060,6 +2365,20 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       <p className="text-[11px] text-slate-500 truncate mt-0.5">
                         {bill.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
                       </p>
+                      {bill.customerPhone && (
+                        <div className="flex items-center gap-2 mt-1 text-[10px]">
+                          <span className="text-slate-400 font-mono">📱 +91 {getCleanPhone(bill.customerPhone)}</span>
+                          {bill.pointsEarned !== undefined && bill.pointsEarned > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400 font-bold">+{bill.pointsEarned} pts</span>
+                          )}
+                          {bill.pointsRedeemed !== undefined && bill.pointsRedeemed > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">🎁 -{bill.pointsRedeemed} pts free</span>
+                          )}
+                          {bill.totalLoyaltyPoints !== undefined && (
+                            <span className="text-slate-500 font-bold">(Bal: {bill.totalLoyaltyPoints} pts)</span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">

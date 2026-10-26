@@ -494,18 +494,33 @@ export async function fetchInventoryFromSupabase(): Promise<InventoryStock | nul
   const client = getSupabaseClient();
   if (!client) return null;
 
-  const { data, error } = await client
-    .from('inventory')
-    .select('*')
-    
-    .eq('id', currentFranchiseId || 'global')
-    .single();
+  const targetId = (currentFranchiseId && currentFranchiseId !== 'all' && currentFranchiseId !== 'NONE') ? currentFranchiseId : 'global';
 
-  if (error || !data) {
+  try {
+    let { data, error } = await client
+      .from('inventory')
+      .select('*')
+      .eq('id', targetId)
+      .maybeSingle();
+
+    if ((!data || error) && targetId !== 'global') {
+      const fallback = await client
+        .from('inventory')
+        .select('*')
+        .eq('id', 'global')
+        .maybeSingle();
+      data = fallback.data;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return rowToInventory(data);
+  } catch (err) {
+    console.warn("Supabase fetchInventory notice:", err);
     return null;
   }
-
-  return rowToInventory(data);
 }
 
 export async function upsertInventoryToSupabase(inv: InventoryStock, userId: string = ''): Promise<boolean> {

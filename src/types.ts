@@ -118,6 +118,7 @@ export interface QuickBill {
   updatedAt?: string;
   pointsEarned?: number;
   pointsRedeemed?: number;
+  totalLoyaltyPoints?: number;
 }
 
 

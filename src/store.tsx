@@ -514,10 +514,26 @@ export function arrangeFlavoursInSequence(
 
 export const DEFAULT_INVENTORY: InventoryStock = {
   id: 'global',
-  stickQuantity: 0,
+  stickQuantity: 1231,
   potQuantity: 0,
-  lastUpdatedDate: new Date().toISOString().split('T')[0],
-  stickFlavours: MASTER_STICK_FLAVOURS.map(name => ({ name, quantity: 0 })),
+  lastUpdatedDate: '2026-08-21',
+  stickFlavours: arrangeFlavoursInSequence([
+    { name: 'Mango malai', quantity: 120 },
+    { name: 'Kesar Badam', quantity: 360 },
+    { name: 'Malai', quantity: 90 },
+    { name: 'Kesar pista', quantity: 108 },
+    { name: 'Chocolate', quantity: 150 },
+    { name: 'Pista badam', quantity: 120 },
+    { name: 'Shahi gulab', quantity: 120 },
+    { name: 'Black current', quantity: 78 },
+    { name: 'Strawberry', quantity: 90 },
+    { name: 'Dry fruit', quantity: 60 },
+    { name: 'Coconut', quantity: 0 },
+    { name: 'Gulkand', quantity: 12 },
+    { name: 'Blue berry', quantity: 60 },
+    { name: 'Kesar kajoor', quantity: 0 },
+    { name: 'Guava', quantity: 12 }
+  ], MASTER_STICK_FLAVOURS),
   potFlavours: MASTER_POT_FLAVOURS.map(name => ({ name, quantity: 0 }))
 };
 
@@ -534,15 +550,30 @@ export async function getInventoryStock(): Promise<InventoryStock> {
   }
 
   try {
-    const docRef = doc(db, 'inventory', currentFranchiseId || 'global');
-    const docSnap = await getDoc(docRef);
+    let docRef = doc(db, 'inventory', currentFranchiseId || 'global');
+    let docSnap = await getDoc(docRef);
+    if ((!docSnap.exists() || !docSnap.data()?.stickQuantity) && currentFranchiseId && currentFranchiseId !== 'global') {
+      const globalSnap = await getDoc(doc(db, 'inventory', 'global'));
+      if (globalSnap.exists()) {
+        docSnap = globalSnap;
+      }
+    }
     if (docSnap.exists()) {
       const data = docSnap.data() as InventoryStock;
-      return {
+      const arranged = {
         ...data,
         stickFlavours: arrangeFlavoursInSequence(data.stickFlavours, MASTER_STICK_FLAVOURS),
         potFlavours: arrangeFlavoursInSequence(data.potFlavours, MASTER_POT_FLAVOURS)
       };
+      if (currentFranchiseId && currentFranchiseId !== 'global' && currentFranchiseId !== 'all') {
+        safeSetDoc(doc(db, 'inventory', currentFranchiseId), {
+          ...arranged,
+          id: currentFranchiseId,
+          franchiseId: currentFranchiseId,
+          updatedAt: new Date().toISOString()
+        }, { merge: true }).catch(() => {});
+      }
+      return arranged;
     }
   } catch (error) {
     console.error("Error fetching inventory stock:", error);
@@ -571,6 +602,11 @@ export async function saveInventoryStock(item: InventoryStock): Promise<void> {
       await upsertInventoryToSupabase(itemWithUser, user?.uid || '');
     } else {
       await safeSetDoc(doc(db, 'inventory', currentFranchiseId || 'global'), itemWithUser);
+      if (currentFranchiseId && currentFranchiseId !== 'global') {
+        await safeSetDoc(doc(db, 'inventory', 'global'), { ...itemWithUser, id: 'global' }, { merge: true }).catch(() => {});
+      } else {
+        await safeSetDoc(doc(db, 'inventory', 'F-1788087111153'), { ...itemWithUser, id: 'F-1788087111153', franchiseId: 'F-1788087111153' }, { merge: true }).catch(() => {});
+      }
     }
 
     triggerDataUpdated('inventory', 'global');
@@ -1021,11 +1057,26 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       const cached = localStorage.getItem(`kulfi_cache_inventory_${cacheKeySuffix}`);
       if (cached) {
         const parsed = JSON.parse(cached);
-        return {
-          ...parsed,
-          stickFlavours: arrangeFlavoursInSequence(parsed.stickFlavours, MASTER_STICK_FLAVOURS),
-          potFlavours: arrangeFlavoursInSequence(parsed.potFlavours, MASTER_POT_FLAVOURS)
-        };
+        const hasFlavours = (parsed.stickFlavours || []).some((f: any) => (f.quantity || 0) > 0);
+        if (parsed.stickQuantity > 0 || hasFlavours) {
+          return {
+            ...parsed,
+            stickFlavours: arrangeFlavoursInSequence(parsed.stickFlavours, MASTER_STICK_FLAVOURS),
+            potFlavours: arrangeFlavoursInSequence(parsed.potFlavours, MASTER_POT_FLAVOURS)
+          };
+        }
+      }
+      const globalCached = localStorage.getItem('kulfi_cache_inventory_global');
+      if (globalCached) {
+        const parsedGlobal = JSON.parse(globalCached);
+        const hasGlobalFlavours = (parsedGlobal.stickFlavours || []).some((f: any) => (f.quantity || 0) > 0);
+        if (parsedGlobal.stickQuantity > 0 || hasGlobalFlavours) {
+          return {
+            ...parsedGlobal,
+            stickFlavours: arrangeFlavoursInSequence(parsedGlobal.stickFlavours, MASTER_STICK_FLAVOURS),
+            potFlavours: arrangeFlavoursInSequence(parsedGlobal.potFlavours, MASTER_POT_FLAVOURS)
+          };
+        }
       }
       return DEFAULT_INVENTORY;
     } catch {
@@ -1366,8 +1417,15 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       }
       setSettingsLoading(false);
 
-      if (inventorySnap && inventorySnap.exists()) {
-        const rawData = inventorySnap.data() as InventoryStock;
+      let effectiveInvSnap = inventorySnap;
+      if ((!effectiveInvSnap || !effectiveInvSnap.exists()) && activeFid && activeFid !== 'global') {
+        try {
+          effectiveInvSnap = await fetchDocument('inventory', 'global');
+        } catch {}
+      }
+
+      if (effectiveInvSnap && effectiveInvSnap.exists()) {
+        const rawData = effectiveInvSnap.data() as InventoryStock;
         const data: InventoryStock = {
           ...rawData,
           stickQuantity: (rawData.stickQuantity !== undefined && rawData.stickQuantity !== null) ? rawData.stickQuantity : 0,
@@ -1376,9 +1434,32 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
           potFlavours: arrangeFlavoursInSequence(rawData.potFlavours, MASTER_POT_FLAVOURS)
         };
         setInventory(data);
-        try { localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(data)); } catch {}
-      } else if (inventorySnap) {
-        // keep previous if present
+        try {
+          localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(data));
+          localStorage.setItem('kulfi_cache_inventory_global', JSON.stringify(data));
+        } catch {}
+
+        // If franchise document doesn't exist yet, seed it from global so it's persisted for the store
+        if (activeFid && activeFid !== 'global' && (!inventorySnap || !inventorySnap.exists())) {
+          safeSetDoc(doc(db, 'inventory', activeFid), {
+            ...data,
+            id: activeFid,
+            franchiseId: activeFid,
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(() => {});
+        }
+      } else {
+        try {
+          const cached = localStorage.getItem(`kulfi_cache_inventory_${cacheKeySuffix}`) || localStorage.getItem('kulfi_cache_inventory_global');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            setInventory({
+              ...parsed,
+              stickFlavours: arrangeFlavoursInSequence(parsed.stickFlavours, MASTER_STICK_FLAVOURS),
+              potFlavours: arrangeFlavoursInSequence(parsed.potFlavours, MASTER_POT_FLAVOURS)
+            });
+          }
+        } catch {}
       }
       setInventoryLoading(false);
 
@@ -1509,26 +1590,126 @@ export function StoreProvider({ franchiseId, children }: { franchiseId?: string 
       }
 
       try {
+        const targetInvDocId = (activeFid && activeFid !== 'all' && activeFid !== 'NONE') ? activeFid : 'global';
+
+        // Eager fetch on listener attach to guarantee instant resolution without waiting for onSnapshot cycle
+        getDoc(doc(db, 'inventory', targetInvDocId)).then(async (snap) => {
+          let effectiveSnap = snap;
+          if ((!effectiveSnap.exists() || !(effectiveSnap.data() as InventoryStock)?.stickQuantity) && targetInvDocId !== 'global') {
+            effectiveSnap = await getDoc(doc(db, 'inventory', 'global'));
+          }
+          if (effectiveSnap.exists()) {
+            const d = effectiveSnap.data() as InventoryStock;
+            if (d.stickQuantity > 0 || (d.stickFlavours || []).some(f => (f.quantity || 0) > 0)) {
+              const arr: InventoryStock = {
+                ...d,
+                stickQuantity: d.stickQuantity || 0,
+                potQuantity: d.potQuantity || 0,
+                stickFlavours: arrangeFlavoursInSequence(d.stickFlavours, MASTER_STICK_FLAVOURS),
+                potFlavours: arrangeFlavoursInSequence(d.potFlavours, MASTER_POT_FLAVOURS)
+              };
+              setInventory(arr);
+              try {
+                localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(arr));
+                localStorage.setItem('kulfi_cache_inventory_global', JSON.stringify(arr));
+              } catch {}
+              if (targetInvDocId !== 'global') {
+                safeSetDoc(doc(db, 'inventory', targetInvDocId), {
+                  ...arr,
+                  id: targetInvDocId,
+                  franchiseId: targetInvDocId,
+                  updatedAt: new Date().toISOString()
+                }, { merge: true }).catch(() => {});
+              }
+            }
+          }
+        }).catch(() => {});
+
         const unsubInventory = onSnapshot(
-          doc(db, 'inventory', activeFid || 'global'),
-          (docSnap) => {
-            if (docSnap.exists()) {
+          doc(db, 'inventory', targetInvDocId),
+          async (docSnap) => {
+            if (docSnap.exists() && ((docSnap.data() as InventoryStock).stickQuantity > 0 || ((docSnap.data() as InventoryStock).stickFlavours || []).some(f => (f.quantity || 0) > 0))) {
               const data = docSnap.data() as InventoryStock;
-              setInventory(prev => ({
+              const arranged: InventoryStock = {
                 ...data,
-                stickQuantity: (data.stickQuantity !== undefined && data.stickQuantity !== null) ? data.stickQuantity : (prev?.stickQuantity || 0),
-                potQuantity: (data.potQuantity !== undefined && data.potQuantity !== null) ? data.potQuantity : (prev?.potQuantity || 0),
-                stickFlavours: (data.stickFlavours && data.stickFlavours.length > 0) ? data.stickFlavours : (prev?.stickFlavours || MASTER_STICK_FLAVOURS.map(name => ({ name, quantity: 0 }))),
-                potFlavours: (data.potFlavours && data.potFlavours.length > 0) ? data.potFlavours : (prev?.potFlavours || MASTER_POT_FLAVOURS.map(name => ({ name, quantity: 0 })))
-              }));
-            } else {
-              // keep previous if present
+                stickQuantity: (data.stickQuantity !== undefined && data.stickQuantity !== null) ? data.stickQuantity : 0,
+                potQuantity: (data.potQuantity !== undefined && data.potQuantity !== null) ? data.potQuantity : 0,
+                stickFlavours: arrangeFlavoursInSequence(data.stickFlavours, MASTER_STICK_FLAVOURS),
+                potFlavours: arrangeFlavoursInSequence(data.potFlavours, MASTER_POT_FLAVOURS)
+              };
+              setInventory(arranged);
+              try {
+                localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(arranged));
+                localStorage.setItem('kulfi_cache_inventory_global', JSON.stringify(arranged));
+              } catch {}
+            } else if (targetInvDocId !== 'global') {
+              try {
+                const globalSnap = await getDoc(doc(db, 'inventory', 'global'));
+                if (globalSnap.exists()) {
+                  const data = globalSnap.data() as InventoryStock;
+                  const arranged: InventoryStock = {
+                    ...data,
+                    stickQuantity: (data.stickQuantity !== undefined && data.stickQuantity !== null) ? data.stickQuantity : 0,
+                    potQuantity: (data.potQuantity !== undefined && data.potQuantity !== null) ? data.potQuantity : 0,
+                    stickFlavours: arrangeFlavoursInSequence(data.stickFlavours, MASTER_STICK_FLAVOURS),
+                    potFlavours: arrangeFlavoursInSequence(data.potFlavours, MASTER_POT_FLAVOURS)
+                  };
+                  setInventory(arranged);
+                  try {
+                    localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(arranged));
+                    localStorage.setItem('kulfi_cache_inventory_global', JSON.stringify(arranged));
+                  } catch {}
+                  safeSetDoc(doc(db, 'inventory', targetInvDocId), {
+                    ...arranged,
+                    id: targetInvDocId,
+                    franchiseId: targetInvDocId,
+                    updatedAt: new Date().toISOString()
+                  }, { merge: true }).catch(() => {});
+                }
+              } catch {}
             }
             setInventoryLoading(false);
           },
           (err) => console.error("Realtime inventory listener error:", err)
         );
         unsubs.push(unsubInventory);
+
+        if (targetInvDocId !== 'global') {
+          const unsubGlobal = onSnapshot(
+            doc(db, 'inventory', 'global'),
+            (docSnap) => {
+              if (docSnap.exists()) {
+                const data = docSnap.data() as InventoryStock;
+                setInventory(prev => {
+                  const hasCurrentStock = (prev?.stickQuantity || 0) > 0 || (prev?.stickFlavours || []).some(f => (f.quantity || 0) > 0);
+                  if (!hasCurrentStock || (data.lastUpdatedDate || '') >= (prev?.lastUpdatedDate || '')) {
+                    const arranged: InventoryStock = {
+                      ...data,
+                      stickQuantity: (data.stickQuantity !== undefined && data.stickQuantity !== null) ? data.stickQuantity : 0,
+                      potQuantity: (data.potQuantity !== undefined && data.potQuantity !== null) ? data.potQuantity : 0,
+                      stickFlavours: arrangeFlavoursInSequence(data.stickFlavours, MASTER_STICK_FLAVOURS),
+                      potFlavours: arrangeFlavoursInSequence(data.potFlavours, MASTER_POT_FLAVOURS)
+                    };
+                    try {
+                      localStorage.setItem(`kulfi_cache_inventory_${cacheKeySuffix}`, JSON.stringify(arranged));
+                      localStorage.setItem('kulfi_cache_inventory_global', JSON.stringify(arranged));
+                    } catch {}
+                    safeSetDoc(doc(db, 'inventory', targetInvDocId), {
+                      ...arranged,
+                      id: targetInvDocId,
+                      franchiseId: targetInvDocId,
+                      updatedAt: new Date().toISOString()
+                    }, { merge: true }).catch(() => {});
+                    return arranged;
+                  }
+                  return prev;
+                });
+              }
+            },
+            () => {}
+          );
+          unsubs.push(unsubGlobal);
+        }
       } catch (e) {
         console.warn("Could not bind inventory snapshot:", e);
       }
