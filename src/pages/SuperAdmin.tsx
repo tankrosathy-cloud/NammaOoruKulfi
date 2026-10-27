@@ -57,7 +57,7 @@ export default function SuperAdmin({ onNavigate }: { onNavigate?: (tab: string) 
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6 pb-36 touch-pan-y">
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <Shield className={`w-8 h-8 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />

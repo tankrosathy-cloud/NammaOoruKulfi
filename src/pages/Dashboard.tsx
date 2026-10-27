@@ -258,7 +258,7 @@ export default function Dashboard({
       variants={containerVariants} 
       initial="hidden" 
       animate="show" 
-      className="p-6 space-y-8 pb-32"
+      className="p-3.5 sm:p-6 space-y-6 sm:space-y-8 pb-36 touch-pan-y w-full"
     >
       <motion.div variants={itemVariants} className="flex justify-between items-start relative">
         <div>

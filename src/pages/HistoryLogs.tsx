@@ -49,7 +49,7 @@ export default function HistoryLogs() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3.5 sm:p-6 space-y-6 pb-36 touch-pan-y">
       <div className="bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-300 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black tracking-tighter mb-1 flex items-center gap-2 text-slate-900 dark:text-white">

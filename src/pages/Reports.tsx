@@ -384,7 +384,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
   if (loading) return <div className="p-6 text-center text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Loading reports...</div>;
 
   return (
-    <div className="p-6 space-y-8 pb-32">
+    <div className="p-3.5 sm:p-6 space-y-6 sm:space-y-8 pb-36 touch-pan-y w-full">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-black tracking-tighter uppercase mb-1 text-slate-900 dark:text-white">
@@ -1305,7 +1305,7 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                 <X className="w-5 h-5 text-slate-500" />
               </Button>
             </div>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto overscroll-contain touch-pan-y pr-2">
               {viewEntry._isProfit ? (
                 <>
                   <div className="grid grid-cols-2 gap-4">

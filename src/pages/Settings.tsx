@@ -851,7 +851,7 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 pb-32 max-w-full overflow-hidden">
+    <div className="p-4 sm:p-6 space-y-6 pb-36 max-w-full overflow-x-clip touch-pan-y">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-extrabold tracking-tight mb-1 text-slate-900 dark:text-white">

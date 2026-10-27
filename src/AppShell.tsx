@@ -201,7 +201,7 @@ function AppShellContent() {
   };
 
   return (
-    <div className={`flex flex-col min-h-screen font-sans transition-colors duration-300 ${
+    <div className={`flex flex-col min-h-screen font-sans transition-colors duration-300 overflow-x-clip touch-pan-y ${
       isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
     }`}>
       <header className={`px-2 sm:px-6 py-2 sm:py-4 sticky top-0 z-30 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
@@ -399,7 +399,7 @@ function AppShellContent() {
         </div>
       )}
       
-      <main className="flex-1 overflow-x-hidden pb-28">
+      <main className="flex-1 min-w-0 pb-28 touch-pan-y">
         {activeTab === 'dashboard' && navRole === 'owner' && (
           <Dashboard 
             onNavigateToEntry={handleEditEntry} 
