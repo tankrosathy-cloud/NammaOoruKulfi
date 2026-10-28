@@ -40,12 +40,14 @@ import {
   useSettings, 
   useInventory, 
   useEntries,
+  safeSetDoc,
   MASTER_STICK_FLAVOURS,
   MASTER_POT_FLAVOURS,
   arrangeFlavoursInSequence
 } from '../store';
 import { BillItem, QuickBill } from '../types';
-import { auth } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
+import { doc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import { useFranchise } from '../context/FranchiseContext';
 import { EditBillModal } from './EditBillModal';
@@ -290,6 +292,49 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   }, [bills, cleanCustomerPhone]);
 
   const customerPointsBalance = customerPointsSummary.balance;
+
+  // Chronological customer loyalty balance map (bill.id -> running customer balance as of that bill)
+  const customerChronologicalBalanceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const byPhone: Record<string, QuickBill[]> = {};
+    bills.forEach(b => {
+      const clean = getCleanPhone(b.customerPhone);
+      if (clean && clean.length >= 10) {
+        if (!byPhone[clean]) byPhone[clean] = [];
+        byPhone[clean].push(b);
+      }
+    });
+
+    Object.values(byPhone).forEach(phoneBills => {
+      // Sort oldest first (ascending)
+      const sorted = [...phoneBills].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+      let running = 0;
+      sorted.forEach(b => {
+        running = Math.max(0, running + (b.pointsEarned || 0) - (b.pointsRedeemed || 0));
+        map.set(b.id, running);
+      });
+    });
+
+    return map;
+  }, [bills]);
+
+  // Silently heal any bills in Firestore where stored totalLoyaltyPoints is out of sync with chronological ledger
+  useEffect(() => {
+    if (!auth.currentUser || bills.length === 0 || customerChronologicalBalanceMap.size === 0) return;
+    const billsToHeal = bills.filter(b => {
+      const expected = customerChronologicalBalanceMap.get(b.id);
+      return expected !== undefined && b.totalLoyaltyPoints !== expected;
+    });
+
+    if (billsToHeal.length > 0) {
+      billsToHeal.forEach(b => {
+        const correctBal = customerChronologicalBalanceMap.get(b.id)!;
+        safeSetDoc(doc(db, 'bills', b.id), { totalLoyaltyPoints: correctBal }, { merge: true }).catch(err => {
+          console.warn("Could not auto-heal bill loyalty points in background:", err);
+        });
+      });
+    }
+  }, [bills, customerChronologicalBalanceMap]);
 
   const cartSticksCount = useMemo(() => {
     return cartItems.filter(i => i.category === 'stick').reduce((s, i) => s + i.quantity, 0);
@@ -751,9 +796,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     }
 
     const availableBalance = Math.max(0, earnedSum - redeemedSum);
-    const totalBalance = currentBill.totalLoyaltyPoints !== undefined 
-      ? currentBill.totalLoyaltyPoints 
-      : availableBalance;
+    const totalBalance = customerChronologicalBalanceMap.get(currentBill.id) ?? currentBill.totalLoyaltyPoints ?? availableBalance;
 
     return {
       earned: currentBill.pointsEarned || 0,
@@ -761,7 +804,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       totalBalance,
       lifetimeEarned: earnedSum
     };
-  }, [currentBill, receiptCustomerPhone, bills]);
+  }, [currentBill, receiptCustomerPhone, bills, customerChronologicalBalanceMap]);
 
   // Start a fresh new customer transaction
   const handleNextCustomer = () => {
@@ -813,7 +856,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
       const ptsEarned = bill.pointsEarned || 0;
       const ptsRedeemed = bill.pointsRedeemed || 0;
 
-      let totalPts = bill.totalLoyaltyPoints;
+      let totalPts = customerChronologicalBalanceMap.get(bill.id) ?? bill.totalLoyaltyPoints;
       if (totalPts === undefined) {
         let earnedSum = 0;
         let redeemedSum = 0;
@@ -2576,8 +2619,10 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                           {bill.pointsRedeemed !== undefined && bill.pointsRedeemed > 0 && (
                             <span className="text-emerald-600 dark:text-emerald-400 font-bold">🎁 -{bill.pointsRedeemed} pts free</span>
                           )}
-                          {bill.totalLoyaltyPoints !== undefined && (
-                            <span className="text-slate-500 font-bold">(Bal: {bill.totalLoyaltyPoints} pts)</span>
+                          {(customerChronologicalBalanceMap.has(bill.id) || bill.totalLoyaltyPoints !== undefined) && (
+                            <span className="text-slate-500 font-bold">
+                              (Bal: {customerChronologicalBalanceMap.get(bill.id) ?? bill.totalLoyaltyPoints} pts)
+                            </span>
                           )}
                         </div>
                       )}
@@ -2887,8 +2932,10 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                               {bill.pointsRedeemed !== undefined && bill.pointsRedeemed > 0 && (
                                 <span className="text-emerald-500 font-bold">🎁 -{bill.pointsRedeemed} pts free</span>
                               )}
-                              {bill.totalLoyaltyPoints !== undefined && (
-                                <span className="text-slate-500 font-bold">(Bal: {bill.totalLoyaltyPoints} pts)</span>
+                              {(customerChronologicalBalanceMap.has(bill.id) || bill.totalLoyaltyPoints !== undefined) && (
+                                <span className="text-slate-500 font-bold">
+                                  (Bal: {customerChronologicalBalanceMap.get(bill.id) ?? bill.totalLoyaltyPoints} pts)
+                                </span>
                               )}
                             </div>
                           )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Plus, 
@@ -84,13 +85,15 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
     return Math.max(0, subtotal - (Number(discount) || 0));
   }, [subtotal, discount]);
 
-  // Points earned calculation (3 pts per stick / pot)
+  // Points earned calculation (3 pts per stick / pot / plate kulfi)
   const pointsEarned = useMemo(() => {
     const totalKulfis = items
-      .filter(i => i.category === 'stick' || i.category === 'pot')
+      .filter(i => i.category === 'stick' || i.category === 'pot' || i.category === 'plate')
       .reduce((s, i) => s + i.quantity, 0);
-    return totalKulfis * 3;
-  }, [items]);
+    const freeCount = bill?.pointsRedeemed ? Math.round(bill.pointsRedeemed / 40) : 0;
+    const paidKulfis = Math.max(0, totalKulfis - freeCount);
+    return paidKulfis * 3;
+  }, [items, bill]);
 
   if (!isOpen || !bill) return null;
 
@@ -178,6 +181,15 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
         upiAmt = Math.max(0, grandTotal - cashAmt);
       }
 
+      // Calculate delta to properly update totalLoyaltyPoints on this bill
+      const oldEarned = bill.pointsEarned ?? 0;
+      const oldRedeemed = bill.pointsRedeemed ?? 0;
+      const newRedeemed = bill.pointsRedeemed ?? 0;
+      const delta = (pointsEarned - newRedeemed) - (oldEarned - oldRedeemed);
+      const updatedTotalLoyaltyPoints = bill.totalLoyaltyPoints !== undefined
+        ? Math.max(0, bill.totalLoyaltyPoints + delta)
+        : pointsEarned;
+
       const updated: QuickBill = {
         ...bill,
         items,
@@ -191,6 +203,7 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
         customerName: customerName.trim(),
         notes: notes.trim(),
         pointsEarned,
+        totalLoyaltyPoints: updatedTotalLoyaltyPoints,
         updatedAt: new Date().toISOString()
       };
 
@@ -204,14 +217,17 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+  const modalContent = (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
       <div 
-        className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80 sticky top-0 z-10">
+        {/* Header - Fixed top */}
+        <div className="p-3.5 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/95 shrink-0 z-10">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
@@ -221,7 +237,7 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
                 {bill.date}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               Created {format(new Date(bill.createdAt), 'hh:mm a')} • Update items, payment or customer info
             </p>
           </div>
@@ -229,13 +245,19 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
             type="button"
             onClick={onClose}
             className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            title="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-5 text-sm flex-1">
+        {/* Form wrapping scrollable content and sticky footer */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Scrollable Form Body */}
+          <div 
+            style={{ WebkitOverflowScrolling: 'touch' }} 
+            className="p-3.5 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-sm flex-1 min-h-0"
+          >
           {/* Customer Mobile (Mandatory) & Name */}
           <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
             <div className="flex items-center justify-between text-xs font-black uppercase">
@@ -388,7 +410,7 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
                 All items removed. Add at least one flavour above.
               </div>
             ) : (
-              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+              <div className="space-y-1.5">
                 {items.map((item, idx) => (
                   <div
                     key={`${item.name}-${idx}`}
@@ -538,54 +560,60 @@ export const EditBillModal: React.FC<EditBillModalProps> = ({
               />
             </div>
           </div>
-
-          {/* Order Totals Summary Bar */}
-          <div className="p-3.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                Subtotal: ₹{subtotal} {discount > 0 && `• Disc: -₹${discount}`}
-              </span>
-              <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                ⭐ Loyalty: +{pointsEarned} pts
-              </span>
-            </div>
-            <div className="text-right">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
-                Total Due
-              </span>
-              <span className="text-xl font-black font-mono text-slate-900 dark:text-white">
-                ₹{grandTotal}
-              </span>
-            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="pt-2 flex gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="flex-1 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving || items.length === 0}
-              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-pink-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving ? (
-                <span>Saving...</span>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Update Bill • ₹{grandTotal}</span>
-                </>
-              )}
-            </button>
+          {/* Sticky Action Footer - ALWAYS VISIBLE AT BOTTOM, NEVER OBSCURED */}
+          <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-md p-3 sm:p-4 space-y-2.5 z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.15)]">
+            {/* Order Totals Summary Bar */}
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                  Subtotal: ₹{subtotal} {discount > 0 && `• Disc: -₹${discount}`}
+                </span>
+                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                  ⭐ Loyalty: +{pointsEarned} pts
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                  Total Due
+                </span>
+                <span className="text-lg sm:text-xl font-black font-mono text-slate-900 dark:text-white">
+                  ₹{grandTotal}
+                </span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSaving}
+                className="w-1/3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || items.length === 0}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-pink-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+              >
+                {isSaving ? (
+                  <span>Saving...</span>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 shrink-0" />
+                    <span>Update Bill • ₹{grandTotal}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

@@ -970,6 +970,32 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
   }
 }
 
+export async function recalculateCustomerLoyaltyInDb(customerPhone: string, franchiseId?: string | null): Promise<void> {
+  const clean = customerPhone.replace(/\D/g, '').slice(-10);
+  if (!clean || clean.length < 10) return;
+  try {
+    const q = buildFranchiseQuery(db, 'bills', franchiseId);
+    const snap = await getDocs(q);
+    const phoneBills = snap.docs
+      .map(d => ({ ...d.data(), id: d.id } as QuickBill))
+      .filter(b => b.customerPhone && b.customerPhone.replace(/\D/g, '').slice(-10) === clean);
+    
+    // Sort chronological: oldest first
+    phoneBills.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    let running = 0;
+    for (const b of phoneBills) {
+      const earned = b.pointsEarned || 0;
+      const redeemed = b.pointsRedeemed || 0;
+      running = Math.max(0, running + earned - redeemed);
+      if (b.totalLoyaltyPoints !== running) {
+        await safeSetDoc(doc(db, 'bills', b.id), { totalLoyaltyPoints: running }, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn("Could not recalculate customer loyalty in db:", err);
+  }
+}
+
 export async function updateQuickBill(originalBill: QuickBill, updatedBill: QuickBill): Promise<void> {
   const user = auth.currentUser;
   triggerWriteStart();
@@ -982,6 +1008,17 @@ export async function updateQuickBill(originalBill: QuickBill, updatedBill: Quic
 
   try {
     await setDoc(doc(db, 'bills', updatedBill.id), sanitizeForFirestore(billWithUser));
+
+    // Recalculate customer loyalty points cascade for this customer (and old customer if phone changed)
+    const oldPhone = originalBill.customerPhone ? originalBill.customerPhone.replace(/\D/g, '').slice(-10) : '';
+    const newPhone = updatedBill.customerPhone ? updatedBill.customerPhone.replace(/\D/g, '').slice(-10) : '';
+    
+    if (newPhone && newPhone.length >= 10) {
+      await recalculateCustomerLoyaltyInDb(newPhone, billWithUser.franchiseId);
+    }
+    if (oldPhone && oldPhone.length >= 10 && oldPhone !== newPhone) {
+      await recalculateCustomerLoyaltyInDb(oldPhone, billWithUser.franchiseId);
+    }
 
     // Calculate delta changes to sync with DailyEntry if applicable
     if (updatedBill.syncedToDailyEntry !== false) {
@@ -1081,15 +1118,20 @@ export async function deleteQuickBill(id: string): Promise<void> {
   triggerWriteStart();
   try {
     const docRef = doc(db, 'bills', id);
+    let deletedBill: QuickBill | null = null;
     try {
       const snap = await getDoc(docRef);
       let billNumber = id;
       if (snap.exists()) {
-        const data = snap.data() as QuickBill;
-        billNumber = data.billNumber || id;
+        deletedBill = snap.data() as QuickBill;
+        billNumber = deletedBill.billNumber || id;
       }
       await deleteDoc(docRef);
       await addLog('DELETE_BILL', `Deleted Bill #${billNumber}`);
+
+      if (deletedBill?.customerPhone) {
+        await recalculateCustomerLoyaltyInDb(deletedBill.customerPhone, deletedBill.franchiseId);
+      }
     } catch (dbErr) {
       console.warn("Firestore delete bill warning (proceeding with local removal):", dbErr);
     }
