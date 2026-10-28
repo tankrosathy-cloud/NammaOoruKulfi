@@ -31,7 +31,8 @@ import {
   Search,
   History,
   AlertCircle,
-  Edit2
+  Edit2,
+  MessageCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -86,13 +87,13 @@ interface QuickBillModalProps {
 export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBillModalProps) {
   const { settings } = useSettings();
   const { inventory } = useInventory();
-  const { bills, saveBill, updateBill, deleteBill } = useQuickBills();
+  const { bills, saveBill, updateBill, deleteBill, setWhatsAppStatus } = useQuickBills();
   const { franchise, profile } = useFranchise();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // Navigation modes: 'pos' (bill creation) | 'receipt' (viewing bill) | 'history' (recent bills)
-  const [modalMode, setModalMode] = useState<'pos' | 'receipt' | 'history'>('pos');
+  // Navigation modes: 'pos' (bill creation) | 'receipt' (viewing bill) | 'history' (recent bills) | 'whatsapp' (WhatsApp share queue)
+  const [modalMode, setModalMode] = useState<'pos' | 'receipt' | 'history' | 'whatsapp'>('pos');
   // Mobile sub-tab in POS mode: 'menu' (item catalog) | 'cart' (order review & pay)
   const [mobilePosTab, setMobilePosTab] = useState<'menu' | 'cart'>('menu');
   
@@ -174,6 +175,53 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     }, 0);
   }, [filteredBills]);
 
+  // WhatsApp Queue State & Memos
+  const [whatsappFilterStatus, setWhatsappFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
+  const [whatsappSearch, setWhatsappSearch] = useState<string>('');
+  const [justSharedId, setJustSharedId] = useState<string | null>(null);
+
+  // Counts for WhatsApp tab
+  const pendingWhatsAppCount = useMemo(() => {
+    return filteredBills.filter(b => !b.whatsappShared).length;
+  }, [filteredBills]);
+
+  const completedWhatsAppCount = useMemo(() => {
+    return filteredBills.filter(b => !!b.whatsappShared).length;
+  }, [filteredBills]);
+
+  // WhatsApp queue sorted list: pending at the top, completed at bottom
+  const whatsappBills = useMemo(() => {
+    let list = filteredBills;
+    if (whatsappFilterStatus === 'pending') {
+      list = list.filter(b => !b.whatsappShared);
+    } else if (whatsappFilterStatus === 'completed') {
+      list = list.filter(b => !!b.whatsappShared);
+    }
+
+    if (whatsappSearch.trim()) {
+      const q = whatsappSearch.trim().toLowerCase();
+      list = list.filter(b => 
+        b.billNumber.toLowerCase().includes(q) ||
+        (b.customerPhone && b.customerPhone.includes(q)) ||
+        b.items.some(i => i.name.toLowerCase().includes(q))
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const aShared = !!a.whatsappShared;
+      const bShared = !!b.whatsappShared;
+      if (aShared !== bShared) {
+        return aShared ? 1 : -1; // pending at the top, completed at bottom
+      }
+      if (!aShared) {
+        // Pending bills: chronological order so bills are sent in sequence
+        return (a.createdAt || '').localeCompare(b.createdAt || '');
+      } else {
+        // Completed bills: most recently shared at top of completed section
+        return (b.whatsappSharedAt || b.createdAt || '').localeCompare(a.whatsappSharedAt || a.createdAt || '');
+      }
+    });
+  }, [filteredBills, whatsappFilterStatus, whatsappSearch]);
 
   // Audio beep on item tap / completion
   const playBeep = (freq = 600, duration = 80) => {
@@ -822,6 +870,33 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     }
 
     window.open(waUrl, '_blank');
+
+    // Automatically mark bill as shared on WhatsApp
+    setWhatsAppStatus(bill.id, true).catch(err => {
+      console.warn("Could not auto-mark bill as WhatsApp shared:", err);
+    });
+  };
+
+  // Share on WhatsApp and mark completed with visual feedback
+  const handleShareAndComplete = (bill: QuickBill) => {
+    triggerHaptic();
+    setJustSharedId(bill.id);
+    handleShareWhatsApp(bill);
+    setTimeout(() => {
+      setJustSharedId(prev => (prev === bill.id ? null : prev));
+    }, 2500);
+  };
+
+  // Toggle WhatsApp completion state manually
+  const handleToggleWhatsAppStatus = async (bill: QuickBill, e: React.MouseEvent) => {
+    e.stopPropagation();
+    triggerHaptic();
+    const nextStatus = !bill.whatsappShared;
+    try {
+      await setWhatsAppStatus(bill.id, nextStatus);
+    } catch (err) {
+      console.error("Could not toggle WhatsApp status:", err);
+    }
   };
 
   // Thermal printing handler
@@ -865,11 +940,11 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Desktop view switcher tabs */}
-            <div className="hidden md:flex items-center p-1 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700">
+            <div className="hidden md:flex items-center p-1 rounded-xl bg-slate-200/60 dark:bg-slate-800/60 border border-slate-300 dark:border-slate-700 gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalMode('pos')}
-                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                   modalMode === 'pos' 
                     ? 'bg-pink-500 text-white shadow-sm' 
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -881,7 +956,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 <button
                   type="button"
                   onClick={() => setModalMode('receipt')}
-                  className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                     modalMode === 'receipt' 
                       ? 'bg-pink-500 text-white shadow-sm' 
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -893,14 +968,26 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
               <button
                 type="button"
                 onClick={() => setModalMode('history')}
-                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1 ${
                   modalMode === 'history' 
-                    ? 'bg-pink-500 text-white shadow-sm' 
+                    ? 'bg-indigo-600 text-white shadow-sm' 
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                <History className="w-3.5 h-3.5" />
+                <History className="w-3.5 h-3.5 shrink-0" />
                 <span>History ({filteredBills.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalMode('whatsapp')}
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 ${
+                  modalMode === 'whatsapp' 
+                    ? 'bg-emerald-600 text-white shadow-sm' 
+                    : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300'
+                }`}
+              >
+                <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>WhatsApp ({pendingWhatsAppCount})</span>
               </button>
             </div>
 
@@ -926,54 +1013,69 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
           </div>
         </div>
 
-        {/* Mobile View Switcher */}
-        <div className="md:hidden flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 p-1.5 gap-1.5 shrink-0 z-20">
+        {/* Mobile View Switcher - Non-overlapping, clean scrollable pills */}
+        <div className="md:hidden flex items-center border-b border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 p-1.5 gap-1.5 shrink-0 z-20 overflow-x-auto no-scrollbar touch-pan-x">
           <button
             type="button"
             onClick={() => { setModalMode('pos'); setMobilePosTab('menu'); }}
-            className={`flex-1 py-2 text-center text-xs font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'pos' && mobilePosTab === 'menu'
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/60'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
             }`}
           >
-            <IceCream className="w-3.5 h-3.5" />
-            <span>Flavours (Add)</span>
+            <IceCream className="w-3.5 h-3.5 shrink-0" />
+            <span>Flavours</span>
           </button>
           <button
             type="button"
             onClick={() => { setModalMode('pos'); setMobilePosTab('cart'); }}
-            className={`flex-1 py-2 text-center text-xs font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'pos' && mobilePosTab === 'cart'
                 ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/70 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/60'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
             }`}
           >
-            <ShoppingBag className="w-3.5 h-3.5" />
+            <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
             <span>Cart ({totalCartCount})</span>
-            {grandTotal > 0 && <span className="font-mono text-[10px] ml-0.5 px-1 rounded bg-black/20">₹{grandTotal}</span>}
           </button>
           {currentBill && (
             <button
               type="button"
               onClick={() => setModalMode('receipt')}
-              className={`py-2 px-2.5 text-center text-xs font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                modalMode === 'receipt' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-slate-800/70'
+              className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                modalMode === 'receipt' 
+                  ? 'bg-emerald-600 text-white shadow-md' 
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
               }`}
             >
-              <Receipt className="w-3.5 h-3.5" />
+              <Receipt className="w-3.5 h-3.5 shrink-0" />
               <span>Bill</span>
             </button>
           )}
           <button
             type="button"
             onClick={() => setModalMode('history')}
-            className={`py-2 px-2.5 text-center text-xs font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer ${
-              modalMode === 'history' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-slate-800/70'
+            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              modalMode === 'history' 
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/20' 
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
             }`}
           >
-            <History className="w-3.5 h-3.5" />
+            <History className="w-3.5 h-3.5 shrink-0" />
             <span>History ({filteredBills.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalMode('whatsapp')}
+            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              modalMode === 'whatsapp' 
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' 
+                : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30'
+            }`}
+          >
+            <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>WhatsApp ({pendingWhatsAppCount})</span>
           </button>
         </div>
 
@@ -2566,6 +2668,278 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
               )}
             </div>
             <div className="h-10 md:hidden shrink-0" />
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODE 4: WHATSAPP BILL SHARING QUEUE */}
+        {/* ========================================================================= */}
+        {modalMode === 'whatsapp' && (
+          <div style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-6 space-y-4">
+            
+            {/* Header Toolbar */}
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+              isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                    WhatsApp Share Queue
+                    {pendingWhatsAppCount > 0 ? (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                        {pendingWhatsAppCount} Pending
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+                        All Sent ✓
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Send bills one-by-one. Clicking share sends on WhatsApp and moves the bill to the bottom.
+                  </p>
+                </div>
+              </div>
+
+              {/* Date Controls */}
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <Calendar className="w-4 h-4 text-emerald-500 shrink-0" />
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border text-xs font-bold font-mono bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(todayStr)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
+                    selectedDate === todayStr 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Today
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Tabs & Search */}
+            <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+              {/* Status Filter Chips */}
+              <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setWhatsappFilterStatus('all')}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black uppercase cursor-pointer transition-all ${
+                    whatsappFilterStatus === 'all'
+                      ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  All ({filteredBills.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWhatsappFilterStatus('pending')}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black uppercase cursor-pointer transition-all flex items-center justify-center gap-1 ${
+                    whatsappFilterStatus === 'pending'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'text-amber-600 dark:text-amber-400 hover:text-amber-500'
+                  }`}
+                >
+                  <span>To Send</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-mono">
+                    {pendingWhatsAppCount}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWhatsappFilterStatus('completed')}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-black uppercase cursor-pointer transition-all flex items-center justify-center gap-1 ${
+                    whatsappFilterStatus === 'completed'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-500'
+                  }`}
+                >
+                  <span>Completed</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-mono">
+                    {completedWhatsAppCount}
+                  </span>
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={whatsappSearch}
+                  onChange={e => setWhatsappSearch(e.target.value)}
+                  placeholder="Search by bill#, mobile or flavour..."
+                  className="w-full h-9 pl-9 pr-8 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {whatsappSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setWhatsappSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Bills List matching image_8f899e6d.png */}
+            <div className="space-y-2.5">
+              {whatsappBills.length === 0 ? (
+                <div className="p-10 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 space-y-2">
+                  <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center text-xl">
+                    {filteredBills.length === 0 ? '🧾' : '🎉'}
+                  </div>
+                  <p className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                    {filteredBills.length === 0 
+                      ? `No bills generated on ${selectedDate}` 
+                      : (whatsappFilterStatus === 'pending' ? 'All WhatsApp bills sent for today!' : 'No bills found matching search')}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {whatsappFilterStatus === 'pending' && filteredBills.length > 0
+                      ? `Great job! All ${completedWhatsAppCount} bills have been shared to customers.`
+                      : 'Bills created at the counter will appear here ready to share.'}
+                  </p>
+                </div>
+              ) : (
+                whatsappBills.map((bill, index) => {
+                  const isJustShared = justSharedId === bill.id;
+                  const isFirstCompleted = bill.whatsappShared && (index === 0 || !whatsappBills[index - 1]?.whatsappShared);
+                  
+                  return (
+                    <React.Fragment key={bill.id}>
+                      {/* Section divider when viewing 'all' bills */}
+                      {isFirstCompleted && whatsappFilterStatus === 'all' && (
+                        <div className="pt-4 pb-1.5 flex items-center gap-3">
+                          <div className="h-px bg-slate-300 dark:bg-slate-800 flex-1" />
+                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Completed & Sent on WhatsApp ({completedWhatsAppCount})
+                          </span>
+                          <div className="h-px bg-slate-300 dark:bg-slate-800 flex-1" />
+                        </div>
+                      )}
+
+                      <div 
+                        className={`p-3 sm:p-4 rounded-2xl border transition-all duration-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                          isJustShared
+                            ? 'bg-emerald-500/20 border-emerald-500 ring-2 ring-emerald-500 scale-[1.01]'
+                            : bill.whatsappShared
+                              ? isDark ? 'bg-slate-900/40 border-slate-800/80 opacity-75' : 'bg-slate-50/80 border-slate-200 opacity-75'
+                              : isDark ? 'bg-slate-900/90 border-slate-700 shadow-md ring-1 ring-emerald-500/10' : 'bg-white border-slate-300 shadow-md'
+                        }`}
+                      >
+                        {/* Bill Info matching image_8f899e6d.png */}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white font-mono">
+                              #{bill.billNumber}
+                            </span>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              bill.paymentMethod === 'upi'
+                                ? 'bg-cyan-500/15 text-cyan-500'
+                                : bill.paymentMethod === 'cash'
+                                  ? 'bg-emerald-500/15 text-emerald-500'
+                                  : 'bg-pink-500/15 text-pink-500'
+                            }`}>
+                              {bill.paymentMethod}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {format(new Date(bill.createdAt), 'hh:mm a')}
+                            </span>
+                            {bill.whatsappShared ? (
+                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" />
+                                Sent ✓
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                                ⏳ To Send
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Items summary */}
+                          <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                            {bill.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                          </p>
+
+                          {/* Customer mobile & loyalty points */}
+                          {bill.customerPhone && (
+                            <div className="flex items-center gap-2 text-[10px] sm:text-[11px] flex-wrap">
+                              <span className="text-slate-400 font-mono flex items-center gap-1">
+                                📱 +91 {getCleanPhone(bill.customerPhone)}
+                              </span>
+                              {bill.pointsEarned !== undefined && bill.pointsEarned > 0 && (
+                                <span className="text-amber-500 font-bold">+{bill.pointsEarned} pts</span>
+                              )}
+                              {bill.pointsRedeemed !== undefined && bill.pointsRedeemed > 0 && (
+                                <span className="text-emerald-500 font-bold">🎁 -{bill.pointsRedeemed} pts free</span>
+                              )}
+                              {bill.totalLoyaltyPoints !== undefined && (
+                                <span className="text-slate-500 font-bold">(Bal: {bill.totalLoyaltyPoints} pts)</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Right: Amount & Actions (WITHOUT edit, receipt, or delete buttons) */}
+                        <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 dark:border-slate-800">
+                          <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white">
+                            ₹{bill.totalAmount}
+                          </span>
+
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            {/* WhatsApp Share Button: opens WhatsApp and moves bill to bottom */}
+                            <button
+                              type="button"
+                              onClick={() => handleShareAndComplete(bill)}
+                              className={`px-3 sm:px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer ${
+                                bill.whatsappShared
+                                  ? 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
+                              }`}
+                              title="Send receipt to customer on WhatsApp & mark completed"
+                            >
+                              <Share2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>{bill.whatsappShared ? 'Share Again' : 'Share on WhatsApp'}</span>
+                            </button>
+
+                            {/* Mark as Complete / Undo Toggle */}
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleWhatsAppStatus(bill, e)}
+                              className={`px-2.5 py-2 rounded-xl text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-1 ${
+                                bill.whatsappShared
+                                  ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25'
+                                  : 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300'
+                              }`}
+                              title={bill.whatsappShared ? "Mark as pending / not sent" : "Mark as completed without opening WhatsApp"}
+                            >
+                              <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${bill.whatsappShared ? 'text-emerald-400' : 'text-slate-400'}`} />
+                              <span className="hidden xs:inline">{bill.whatsappShared ? 'Done ✓' : 'Mark Done'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="h-12 md:hidden shrink-0" />
           </div>
         )}
 

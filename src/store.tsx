@@ -1,7 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef, useMemo } from 'react';
 import { DailyEntry, Settings, InventoryStock, ExpenseEntry, AppLog, ProfitWithdrawal, SpecialOrder, Denominations, DailyDenominationsRecord, QuickBill } from './types';
 import { db, auth } from './lib/firebase';
-import { collection, onSnapshot, doc, getDocs, setDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDocs, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, limit, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { INITIAL_AUGUST_ENTRIES, INITIAL_AUGUST_EXPENSES, INITIAL_AUGUST_SPECIAL_ORDERS } from './lib/augustDataset';
 import { isSupabaseConfigured, getSupabaseClient } from './lib/supabase';
@@ -1099,6 +1099,22 @@ export async function deleteQuickBill(id: string): Promise<void> {
   }
 }
 
+export async function setQuickBillWhatsAppStatus(id: string, whatsappShared: boolean): Promise<void> {
+  triggerWriteStart();
+  try {
+    const docRef = doc(db, 'bills', id);
+    await updateDoc(docRef, {
+      whatsappShared,
+      whatsappSharedAt: whatsappShared ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    });
+    triggerDataUpdated('bills', id);
+  } catch (error) {
+    console.error("Error setting bill WhatsApp status:", error);
+    triggerDataUpdated('bills', id);
+  }
+}
+
 // React Hooks & Context
 
 export interface StoreState {
@@ -2109,6 +2125,7 @@ export function useQuickBills() {
     saveBill: saveQuickBill,
     updateBill: updateQuickBill,
     deleteBill: deleteQuickBill,
+    setWhatsAppStatus: setQuickBillWhatsAppStatus,
     reload: ctx.refreshAllFromServer
   };
 }

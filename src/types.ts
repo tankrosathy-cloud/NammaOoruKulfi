@@ -119,6 +119,8 @@ export interface QuickBill {
   pointsEarned?: number;
   pointsRedeemed?: number;
   totalLoyaltyPoints?: number;
+  whatsappShared?: boolean;
+  whatsappSharedAt?: string;
 }
 
 
