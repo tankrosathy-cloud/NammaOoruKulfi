@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Logo } from './components/Logo';
-import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield, RotateCw, Receipt, Smartphone } from 'lucide-react';
+import { Home, PlusCircle, List, Settings as SettingsIcon, Package, Wallet, LogOut, History, Sun, Moon, Coins, Sparkles, Shield, RotateCw, Receipt } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import AddEntry from './pages/AddEntry';
 import Reports from './pages/Reports';
@@ -17,7 +17,6 @@ import SyncStatus from './components/SyncStatus';
 import SuperAdmin from './pages/SuperAdmin';
 import { isDateInMonth } from './lib/utils';
 import { QuickBillModal } from './components/QuickBillModal';
-import { AndroidAppModal } from './components/AndroidAppModal';
 
 function AppShellContent() {
   const { theme, toggleTheme } = useTheme();
@@ -45,7 +44,6 @@ function AppShellContent() {
   };
 
   const [isQuickBillOpen, setIsQuickBillOpen] = useState(false);
-  const [isAndroidModalOpen, setIsAndroidModalOpen] = useState(false);
 
   // If actual account is staff, force staff mode. Otherwise follow user's chosen viewMode.
   const effectiveRole: 'owner' | 'staff' = (baseRole === 'staff') ? 'staff' : viewMode;
@@ -203,10 +201,14 @@ function AppShellContent() {
   };
 
   return (
-    <div className={`flex flex-col min-h-screen font-sans transition-colors duration-300 overflow-x-clip touch-pan-y ${
+    <div className={`flex flex-col ${
+      activeTab === 'quickbill' 
+        ? 'h-[100dvh] max-h-[100dvh] overflow-hidden' 
+        : 'min-h-screen overflow-x-clip'
+    } font-sans transition-colors duration-300 touch-pan-y ${
       isDark ? 'bg-[#0B0F19] text-slate-200' : 'bg-[#F1F5F9] text-slate-800'
     }`}>
-      <header className={`px-2 sm:px-6 py-2 sm:py-4 sticky top-0 z-30 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b ${
+      <header className={`px-2 sm:px-6 py-2 sm:py-4 sticky top-0 z-30 flex justify-between items-center backdrop-blur-md transition-all duration-300 border-b shrink-0 ${
         isDark 
           ? 'bg-[#0B0F19]/95 border-slate-800/60' 
           : 'bg-white/95 border-slate-300 shadow-md shadow-slate-100'
@@ -309,19 +311,6 @@ function AppShellContent() {
           </button>
 
           <button 
-            id="header-android-apk-btn"
-            onClick={() => setIsAndroidModalOpen(true)}
-            className="transition-all duration-200 h-7 w-7 sm:h-auto sm:w-auto p-1 sm:px-2.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 flex items-center justify-center gap-1.5 cursor-pointer select-none active:scale-95 shadow-sm shadow-cyan-500/10 shrink-0"
-            title="Download Android APK / Install App"
-            aria-label="Download Android APK / Install App"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline font-black text-[10px] uppercase tracking-wider">
-              APK / App
-            </span>
-          </button>
-
-          <button 
             id="refresh-page-btn"
             onClick={handleRefreshPage} 
             disabled={isRefreshing}
@@ -414,7 +403,11 @@ function AppShellContent() {
         </div>
       )}
       
-      <main className="flex-1 min-w-0 pb-28 touch-pan-y">
+      <main className={`flex-1 min-w-0 ${
+        activeTab === 'quickbill' 
+          ? 'min-h-0 flex flex-col overflow-hidden mb-20' 
+          : 'pb-28'
+      } touch-pan-y`}>
         {activeTab === 'dashboard' && navRole === 'owner' && (
           <Dashboard 
             onNavigateToEntry={handleEditEntry} 
@@ -500,9 +493,6 @@ function AppShellContent() {
           isDark={isDark}
         />}
       </nav>
-
-      {/* Android App & APK Download Modal */}
-      <AndroidAppModal isOpen={isAndroidModalOpen} onClose={() => setIsAndroidModalOpen(false)} />
     </div>
   );
 }

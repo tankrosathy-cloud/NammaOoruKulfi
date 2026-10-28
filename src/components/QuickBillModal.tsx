@@ -832,9 +832,9 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   if (!isOpen) return null;
 
   return (
-    <div className={isEmbedded ? "flex flex-col h-full w-full bg-[#0f172a] overflow-hidden pb-24 relative z-10" : "fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md"}>
+    <div className={isEmbedded ? "flex flex-col h-full w-full min-h-0 bg-[#0f172a] overflow-hidden relative z-10" : "fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md"}>
       <div 
-        className={isEmbedded ? "w-full h-full flex flex-col overflow-hidden" : `w-full max-w-5xl h-full max-h-full sm:h-[92vh] sm:max-h-[92vh] sm:rounded-2xl shadow-2xl overflow-hidden border-0 sm:border flex flex-col transition-all duration-300 ${
+        className={isEmbedded ? "w-full h-full min-h-0 flex flex-col overflow-hidden" : `w-full max-w-5xl h-full max-h-full sm:h-[92vh] sm:max-h-[92vh] sm:rounded-2xl shadow-2xl overflow-hidden border-0 sm:border flex flex-col transition-all duration-300 ${
           isDark 
             ? 'bg-[#0f172a] border-slate-800 text-white shadow-cyan-950/20' 
             : 'bg-white border-slate-200 text-slate-900 shadow-slate-300/40'
@@ -985,7 +985,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             {/* Left: Product Selector Grid */}
             <div 
               style={{ WebkitOverflowScrolling: 'touch' }}
-              className={`flex-1 overflow-y-auto overscroll-contain touch-pan-y p-3.5 sm:p-5 space-y-4 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 min-h-0 ${
+              className={`flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 min-h-0 ${
                 mobilePosTab === 'menu' ? 'flex flex-col' : 'hidden md:flex md:flex-col'
               }`}
             >
@@ -1344,13 +1344,13 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 </div>
               )}
 
-              {/* Bottom spacing on mobile so menu items aren't covered by floating bar */}
-              <div className={`h-24 ${isEmbedded ? 'h-36' : ''} md:hidden shrink-0`} />
+              {/* Bottom spacing on mobile so menu items aren't covered */}
+              <div className="h-6 md:hidden shrink-0" />
             </div>
 
             {/* Sticky Floating Bottom Bar on Mobile (when on Menu) */}
             {mobilePosTab === 'menu' && (
-              <div className={`md:hidden sticky ${isEmbedded ? 'bottom-20' : 'bottom-0'} left-0 right-0 z-30 p-2.5 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-800 flex items-center justify-between gap-3 shadow-2xl shrink-0`}>
+              <div className="md:hidden sticky bottom-0 left-0 right-0 z-30 p-2.5 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-800 flex items-center justify-between gap-3 shadow-2xl shrink-0">
                 {cartItems.length > 0 ? (
                   <>
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1400,7 +1400,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 isDark ? 'bg-slate-900/40' : 'bg-slate-50/70'
               } ${
                 mobilePosTab === 'cart' 
-                  ? 'flex-1 overflow-y-auto overscroll-contain touch-pan-y' 
+                  ? 'flex-1 overflow-y-auto overscroll-contain' 
                   : 'hidden md:flex md:flex-col md:overflow-hidden'
               }`}
             >
@@ -1969,7 +1969,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
               </div>
 
               {/* Extra mobile bottom safe spacer so the Complete Bill button is never cut off on phones */}
-              <div className="h-28 md:hidden shrink-0" />
+              <div className="h-10 md:hidden shrink-0" />
             </div>
           </div>
         )}
@@ -1978,7 +1978,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
         {/* MODE 2: DIGITAL RECEIPT & GOOGLE REVIEW SCREEN */}
         {/* ========================================================================= */}
         {modalMode === 'receipt' && currentBill && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          <div style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-6">
             
             {/* Success Banner */}
             <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-900 dark:text-emerald-300 flex items-center justify-between">
@@ -2344,7 +2344,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
         {/* MODE 3: TODAY'S BILLS & COUNTER SALES HISTORY */}
         {/* ========================================================================= */}
         {modalMode === 'history' && (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+          <div style={{ WebkitOverflowScrolling: 'touch' }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5">
             {/* Date Selector & Quick Filters */}
             <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
               isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
@@ -2565,6 +2565,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 ))
               )}
             </div>
+            <div className="h-10 md:hidden shrink-0" />
           </div>
         )}
 
