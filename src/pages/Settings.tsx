@@ -44,7 +44,9 @@ import {
   Mail,
   MessageCircle,
   UserCheck,
-  ListOrdered
+  ListOrdered,
+  Smartphone,
+  ExternalLink
 } from 'lucide-react';
 import { format, parseISO, addDays, subDays, isToday as isTodayDate, startOfMonth, endOfMonth } from 'date-fns';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
@@ -61,6 +63,8 @@ import FlavourStockSheet from '../components/FlavourStockSheet';
 import CartPromoPoster from '../components/CartPromoPoster';
 import { calculateAvailableStock, calculateDailyStockLedger, DayStockLedgerRow } from '../lib/inventoryUtils';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, BarChart, Bar, Cell } from 'recharts';
+import { usePWAInstall } from '../hooks/usePWAInstall';
+import QRCode from 'qrcode';
 
 export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
   const { profile, franchise } = useFranchise();
@@ -100,9 +104,25 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'franchise' | 'settings' | 'inventory' | 'planner' | 'export' | 'database'>(
+  const [activeTab, setActiveTab] = useState<'franchise' | 'settings' | 'inventory' | 'planner' | 'export' | 'database' | 'help' | 'receiptSetup' | 'apk'>(
     role === 'owner' ? 'inventory' : 'inventory'
   );
+
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [copiedApkUrl, setCopiedApkUrl] = useState(false);
+  const [installingPWA, setInstallingPWA] = useState(false);
+
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const pwaBuilderUrl = `https://www.pwabuilder.com/reportcard?site=${encodeURIComponent(appUrl)}`;
+
+  useEffect(() => {
+    if (appUrl) {
+      QRCode.toDataURL(appUrl, { width: 200, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+        .then(setQrCodeDataUrl)
+        .catch(console.error);
+    }
+  }, [appUrl]);
 
   // Guard against non-superadmins accessing database tab
   useEffect(() => {
@@ -902,8 +922,8 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
           )}
         </div>
 
-        {/* Bottom Row: Franchise, Export, Help, and Database (Superadmin only) */}
-        <div className={`grid ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
+        {/* Bottom Row: Franchise, Export, Android APK, Help, and Database (Superadmin only) */}
+        <div className={`grid ${isSuperAdmin ? 'grid-cols-5' : (role === 'owner' ? 'grid-cols-4' : 'grid-cols-3')} gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-300 dark:border-slate-800`}>
           <button
             onClick={() => setActiveTab('franchise')}
             className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'franchise' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
@@ -920,6 +940,13 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
               <span>Export</span>
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('apk')}
+            className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'apk' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
+          >
+            <Smartphone className="w-3.5 h-3.5 shrink-0" />
+            <span>APK / App</span>
+          </button>
           <button
             onClick={() => setActiveTab('help')}
             className={`w-full h-9 sm:h-10 px-1 sm:px-2 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap ${activeTab === 'help' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-700 hover:text-slate-950 font-extrabold dark:text-slate-400 dark:hover:text-white'}`}
@@ -2684,6 +2711,211 @@ export default function SettingsPage({ role }: { role: 'owner' | 'staff' }) {
                   <Button onClick={() => window.location.href = "mailto:nammaoorukulfisathy@gmail.com"} variant="outline" className="w-full sm:w-auto font-black tracking-widest">
                     SEND EMAIL
                   </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ANDROID APPLICATION & APK TAB */}
+      {activeTab === 'apk' && (
+        <div className="space-y-6">
+          <Card className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <CardHeader className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-pink-500 p-0.5 shadow-lg shadow-cyan-500/20">
+                  <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center text-cyan-400">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    Android Application & APK Package
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30">
+                      PWA + WebAPK Ready
+                    </span>
+                  </CardTitle>
+                  <CardDescription className="font-semibold mt-1">
+                    Download standalone .apk for distribution or install directly on any Android device
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
+              {/* App Status Banner */}
+              <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+                isInstalled 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-500/30 text-emerald-900 dark:text-emerald-300'
+                  : 'bg-cyan-50 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-500/30 text-cyan-900 dark:text-cyan-300'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className={`w-6 h-6 shrink-0 ${isInstalled ? 'text-emerald-600 dark:text-emerald-400' : 'text-cyan-600 dark:text-cyan-400'}`} />
+                  <div>
+                    <p className="font-black text-sm uppercase tracking-wider">
+                      {isInstalled ? 'Installed as Native App' : 'Mobile WebAPK Ready for Android'}
+                    </p>
+                    <p className="text-xs opacity-85">
+                      {isInstalled 
+                        ? 'The application is running in standalone window mode on your device.'
+                        : 'Web App Manifest, HD PNG icons (192px/512px), and Service Worker cache are active.'}
+                    </p>
+                  </div>
+                </div>
+                {isInstallable && (
+                  <Button
+                    onClick={async () => {
+                      setInstallingPWA(true);
+                      try { await install(); } finally { setInstallingPWA(false); }
+                    }}
+                    disabled={installingPWA}
+                    className="w-full sm:w-auto bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase tracking-wider shadow-md"
+                  >
+                    {installingPWA ? 'Installing...' : '1-Tap Android Install'}
+                  </Button>
+                )}
+              </div>
+
+              {/* Two Methods Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Method 1 */}
+                <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-xs flex items-center justify-center font-black">1</span>
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white">Direct Android Install (WebAPK)</h4>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      Fastest
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Android Chrome mints a native APK directly onto your phone without requiring manual APK file transfers or "Install Unknown Apps" security permissions.
+                  </p>
+                  
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                    <p className="font-bold text-slate-700 dark:text-slate-300">How staff can install it in 15 seconds:</p>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-600 dark:text-slate-400 text-[11px]">
+                      <li>Open the link in <strong>Chrome</strong> on the Android phone.</li>
+                      <li>Tap the <strong>3 dots (⋮)</strong> at top right corner.</li>
+                      <li>Select <strong>"Install app"</strong> (or "Add to Home Screen").</li>
+                      <li>It installs with the official app icon and opens full screen without browser bars!</li>
+                    </ol>
+                  </div>
+
+                  {isInstallable ? (
+                    <Button
+                      onClick={async () => {
+                        setInstallingPWA(true);
+                        try { await install(); } finally { setInstallingPWA(false); }
+                      }}
+                      className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs uppercase tracking-wider"
+                    >
+                      <Smartphone className="w-4 h-4 mr-2" />
+                      Install On This Device Now
+                    </Button>
+                  ) : (
+                    <div className="text-center py-1">
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Open from Android Chrome to trigger 1-tap installation
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Method 2 */}
+                <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-pink-500/20 text-pink-600 dark:text-pink-400 text-xs flex items-center justify-center font-black">2</span>
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white">Download Standalone .APK (PWABuilder)</h4>
+                    </div>
+                    <span className="text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-pink-500/10 px-2 py-0.5 rounded border border-pink-500/20">
+                      Standard APK
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Generate an offline installable <code className="text-pink-600 dark:text-pink-400 font-mono">.apk</code> binary package using Microsoft's official PWABuilder engine.
+                  </p>
+
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2 text-xs">
+                    <p className="font-bold text-slate-700 dark:text-slate-300">3 simple steps to download your APK:</p>
+                    <ol className="list-decimal list-inside space-y-1.5 text-slate-600 dark:text-slate-400 text-[11px]">
+                      <li>Click the button below to open PWABuilder with this app's URL.</li>
+                      <li>Under <strong>"Package for Stores"</strong>, click the <strong>"Android"</strong> option.</li>
+                      <li>Click <strong>"Generate" / "Download Package"</strong> to save the <code className="text-pink-600 dark:text-pink-400 font-mono">.apk</code> file.</li>
+                    </ol>
+                  </div>
+
+                  <a
+                    href={pwaBuilderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs uppercase tracking-wider shadow-md transition-all"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download .APK via PWABuilder</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                  </a>
+                </div>
+              </div>
+
+              {/* QR Code and Share Section */}
+              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col sm:flex-row items-center gap-6">
+                {qrCodeDataUrl ? (
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 shadow-md">
+                    <img src={qrCodeDataUrl} alt="App QR Code" className="w-32 h-32 object-contain" />
+                  </div>
+                ) : null}
+                <div className="space-y-3 text-center sm:text-left flex-1 min-w-0">
+                  <h4 className="font-black text-sm uppercase tracking-wider text-slate-900 dark:text-white flex items-center justify-center sm:justify-start gap-2">
+                    <span>📱 Scan to Open on Any Android Phone</span>
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Scan with any phone camera or barcode scanner. Staff can immediately bookmark or install to home screen.
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(appUrl);
+                          setCopiedApkUrl(true);
+                          setTimeout(() => setCopiedApkUrl(false), 2000);
+                        } catch {}
+                      }}
+                      className="font-black text-xs uppercase tracking-wider"
+                    >
+                      {copiedApkUrl ? <Check className="w-3.5 h-3.5 text-emerald-500 mr-1.5" /> : <Copy className="w-3.5 h-3.5 mr-1.5" />}
+                      <span>{copiedApkUrl ? 'Link Copied!' : 'Copy App Link'}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={async () => {
+                        if (navigator.share) {
+                          try {
+                            await navigator.share({
+                              title: 'Namma Ooru Kulfi Android App',
+                              text: 'Open and install the Namma Ooru Kulfi Android App:',
+                              url: appUrl,
+                            });
+                          } catch {}
+                        } else {
+                          try {
+                            await navigator.clipboard.writeText(appUrl);
+                            setCopiedApkUrl(true);
+                            setTimeout(() => setCopiedApkUrl(false), 2000);
+                          } catch {}
+                        }
+                      }}
+                      className="font-black text-xs uppercase tracking-wider"
+                    >
+                      <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                      <span>Share on WhatsApp</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>

@@ -87,6 +87,9 @@ async function startServer() {
     }
   });
 
+  // Serve static assets from public/ (manifest, sw.js, icons)
+  app.use(express.static(path.join(process.cwd(), 'public')));
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

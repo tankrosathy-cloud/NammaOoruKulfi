@@ -970,6 +970,113 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
   }
 }
 
+export async function updateQuickBill(originalBill: QuickBill, updatedBill: QuickBill): Promise<void> {
+  const user = auth.currentUser;
+  triggerWriteStart();
+  const billWithUser: QuickBill = {
+    ...updatedBill,
+    franchiseId: updatedBill.franchiseId || currentFranchiseId || 'NONE',
+    userId: user?.uid || updatedBill.userId || '',
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    await setDoc(doc(db, 'bills', updatedBill.id), sanitizeForFirestore(billWithUser));
+
+    // Calculate delta changes to sync with DailyEntry if applicable
+    if (updatedBill.syncedToDailyEntry !== false) {
+      try {
+        const q = buildFranchiseQuery(db, 'entries', billWithUser.franchiseId, where('date', '==', updatedBill.date));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+          const oldStick = originalBill.items.filter(i => i.category === 'stick').reduce((s, i) => s + i.quantity, 0);
+          const oldPot = originalBill.items.filter(i => i.category === 'pot').reduce((s, i) => s + i.quantity, 0);
+          const oldPlate = originalBill.items.filter(i => i.category === 'plate').reduce((s, i) => s + i.quantity, 0);
+
+          const newStick = updatedBill.items.filter(i => i.category === 'stick').reduce((s, i) => s + i.quantity, 0);
+          const newPot = updatedBill.items.filter(i => i.category === 'pot').reduce((s, i) => s + i.quantity, 0);
+          const newPlate = updatedBill.items.filter(i => i.category === 'plate').reduce((s, i) => s + i.quantity, 0);
+
+          const diffStick = newStick - oldStick;
+          const diffPot = newPot - oldPot;
+          const diffPlate = newPlate - oldPlate;
+
+          let oldCash = 0;
+          let oldUpi = 0;
+          if (originalBill.paymentMethod === 'upi') oldUpi = originalBill.totalAmount;
+          else if (originalBill.paymentMethod === 'cash') oldCash = originalBill.totalAmount;
+          else if (originalBill.paymentMethod === 'split') {
+            oldCash = originalBill.cashAmount || 0;
+            oldUpi = originalBill.upiAmount || 0;
+          }
+
+          let newCash = 0;
+          let newUpi = 0;
+          if (updatedBill.paymentMethod === 'upi') newUpi = updatedBill.totalAmount;
+          else if (updatedBill.paymentMethod === 'cash') newCash = updatedBill.totalAmount;
+          else if (updatedBill.paymentMethod === 'split') {
+            newCash = updatedBill.cashAmount || 0;
+            newUpi = updatedBill.upiAmount || 0;
+          }
+
+          const diffCash = newCash - oldCash;
+          const diffUpi = newUpi - oldUpi;
+
+          if (diffStick !== 0 || diffPot !== 0 || diffPlate !== 0 || diffCash !== 0 || diffUpi !== 0) {
+            let currentSettings: Settings = DEFAULT_SETTINGS;
+            try {
+              const cached = localStorage.getItem(`kulfi_cache_settings_${currentFranchiseId || 'global'}`) || localStorage.getItem('kulfi_cache_settings_global');
+              if (cached) currentSettings = JSON.parse(cached);
+            } catch {}
+            const stickPrice = currentSettings.stickPrice || 40;
+            const potPrice = currentSettings.potPrice || 50;
+            const platePrice = currentSettings.platePrice || 75;
+
+            const matchingDoc = snap.docs[0];
+            const existingEntry = matchingDoc.data() as DailyEntry;
+            const updatedStickSold = Math.max(0, (existingEntry.stickSold || 0) + diffStick);
+            const updatedPotSold = Math.max(0, (existingEntry.potSold || 0) + diffPot);
+            const updatedPlateSold = Math.max(0, (existingEntry.plateSold || 0) + diffPlate);
+            const updatedPhonePe = Math.max(0, (existingEntry.phonePe || 0) + diffUpi);
+            const updatedCashBagTotal = Math.max(0, (existingEntry.cashBagTotal || 0) + diffCash);
+            const updatedActualAmount = updatedCashBagTotal + updatedPhonePe;
+
+            const updatedRequired = (updatedStickSold * stickPrice) + 
+                                    (updatedPotSold * potPrice) + 
+                                    (updatedPlateSold * platePrice);
+
+            const shortage = Math.max(0, updatedRequired - updatedActualAmount);
+            const bonus = Math.max(0, updatedActualAmount - updatedRequired);
+
+            await safeSetDoc(doc(db, 'entries', matchingDoc.id), {
+              ...existingEntry,
+              stickSold: updatedStickSold,
+              potSold: updatedPotSold,
+              plateSold: updatedPlateSold,
+              phonePe: updatedPhonePe,
+              cashBagTotal: updatedCashBagTotal,
+              actualAmount: updatedActualAmount,
+              requiredAmount: updatedRequired,
+              shortage,
+              bonus,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        }
+      } catch (syncErr) {
+        console.warn("Could not sync updated bill delta to daily entry:", syncErr);
+      }
+    }
+
+    await addLog('UPDATE_BILL', `Edited Bill #${updatedBill.billNumber} (₹${updatedBill.totalAmount})`);
+    triggerDataUpdated('bills', updatedBill.id);
+  } catch (error) {
+    console.error("Error updating quick bill:", error);
+    throw error;
+  }
+}
+
 export async function deleteQuickBill(id: string): Promise<void> {
   triggerWriteStart();
   try {
@@ -2000,6 +2107,7 @@ export function useQuickBills() {
     bills: ctx.bills, 
     loading: ctx.billsLoading,
     saveBill: saveQuickBill,
+    updateBill: updateQuickBill,
     deleteBill: deleteQuickBill,
     reload: ctx.refreshAllFromServer
   };

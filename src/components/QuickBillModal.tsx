@@ -29,7 +29,9 @@ import {
   Calendar,
   Percent,
   Search,
-  History
+  History,
+  AlertCircle,
+  Edit2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -45,6 +47,7 @@ import { BillItem, QuickBill } from '../types';
 import { auth } from '../lib/firebase';
 import { useTheme } from '../context/ThemeContext';
 import { useFranchise } from '../context/FranchiseContext';
+import { EditBillModal } from './EditBillModal';
 
 // Shared singletons for performance & zero memory leak
 const qrCodeCache = new Map<string, string>();
@@ -83,7 +86,7 @@ interface QuickBillModalProps {
 export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBillModalProps) {
   const { settings } = useSettings();
   const { inventory } = useInventory();
-  const { bills, saveBill, deleteBill } = useQuickBills();
+  const { bills, saveBill, updateBill, deleteBill } = useQuickBills();
   const { franchise, profile } = useFranchise();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -100,6 +103,8 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   const [cashTendered, setCashTendered] = useState<string>('');
   const [splitCashAmount, setSplitCashAmount] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
+  const [phoneError, setPhoneError] = useState<string>('');
+  const phoneInputRef = useRef<HTMLInputElement>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [activeCategory, setActiveCategory] = useState<'stick' | 'pot' | 'plate' | 'all'>('all');
@@ -108,8 +113,10 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   const [showCustomItemForm, setShowCustomItemForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Active viewing bill for receipt
+  // Active viewing bill for receipt & bill being edited
   const [currentBill, setCurrentBill] = useState<QuickBill | null>(null);
+  const [editingBill, setEditingBill] = useState<QuickBill | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Reset to menu tab whenever modal is opened
@@ -561,6 +568,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     setCashTendered('');
     setSplitCashAmount('');
     setCustomerPhone('');
+    setPhoneError('');
     setCustomerName('');
     setNotes('');
   };
@@ -586,6 +594,20 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   const handleCompleteBill = async () => {
     if (cartItems.length === 0 || isSaving) return;
 
+    // Mandatory Customer Mobile Number Validation
+    const cleanPhone = getCleanPhone(customerPhone);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setPhoneError('Customer mobile number is mandatory (10 digits required).');
+      triggerHaptic();
+      playBeep(300, 200);
+      if (phoneInputRef.current) {
+        phoneInputRef.current.focus();
+        phoneInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    setPhoneError('');
     triggerHaptic();
     playBeep(950, 150);
     setIsSaving(true);
@@ -639,6 +661,20 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     } catch (err) {
       console.error("Failed to sync bill to cloud in background:", err);
     }
+  };
+
+  const handleOpenEditBill = (billToEdit: QuickBill) => {
+    setEditingBill(billToEdit);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditedBill = async (originalBill: QuickBill, updatedBill: QuickBill) => {
+    await updateBill(originalBill, updatedBill);
+    if (currentBill && currentBill.id === updatedBill.id) {
+      setCurrentBill(updatedBill);
+    }
+    triggerHaptic();
+    playBeep(900, 100);
   };
 
   // Receipt customer points data memo
@@ -1504,10 +1540,24 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   </div>
                 )}
 
-                {/* Customer mobile number & Loyalty Points */}
+                {/* Customer mobile number & Loyalty Points (Mandatory) */}
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-slate-400">
-                    <span>Customer Mobile & Loyalty</span>
+                  <div className="flex items-center justify-between text-[10px] font-extrabold uppercase">
+                    <span className="flex items-center gap-1.5">
+                      <span className={phoneError ? 'text-red-500 font-black' : 'text-slate-700 dark:text-slate-300'}>
+                        Customer Mobile
+                      </span>
+                      <span className="text-red-500 text-xs font-black">*</span>
+                      <span className={`text-[8px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase ${
+                        phoneError
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : cleanCustomerPhone.length === 10
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
+                      }`}>
+                        {cleanCustomerPhone.length === 10 ? '✓ Valid' : 'Mandatory'}
+                      </span>
+                    </span>
                     <span className="text-amber-500 font-bold">3 pts / kulfi</span>
                   </div>
                   <div className="relative">
@@ -1515,19 +1565,41 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       +91
                     </span>
                     <input
+                      ref={phoneInputRef}
                       type="tel"
                       inputMode="numeric"
                       maxLength={10}
-                      placeholder="9876543210 (Customer Phone)"
+                      placeholder="9876543210 (10-Digit Mobile Mandatory)"
                       value={customerPhone}
                       onChange={e => {
-                        setCustomerPhone(e.target.value.replace(/\D/g, ''));
+                        const val = e.target.value.replace(/\D/g, '');
+                        setCustomerPhone(val);
                         setRedeemSticks(0);
                         setRedeemPots(0);
+                        if (val.length === 10) {
+                          setPhoneError('');
+                        }
                       }}
-                      className="w-full h-8 pl-10 pr-3 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500 text-slate-900 dark:text-white"
+                      className={`w-full h-8 pl-10 pr-3 rounded-lg text-xs font-mono font-bold transition-all ${
+                        phoneError
+                          ? 'bg-red-500/10 border-2 border-red-500 text-red-900 dark:text-red-200 focus:outline-none ring-2 ring-red-500/30'
+                          : cleanCustomerPhone.length === 10
+                            ? 'bg-emerald-500/10 border-2 border-emerald-500 text-emerald-900 dark:text-emerald-200 focus:outline-none ring-1 ring-emerald-500/20'
+                            : 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500 text-slate-900 dark:text-white'
+                      }`}
                     />
                   </div>
+
+                  {phoneError ? (
+                    <p className="text-[11px] font-bold text-red-500 dark:text-red-400 flex items-center gap-1 animate-in fade-in">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{phoneError}</span>
+                    </p>
+                  ) : customerPhone.length > 0 && customerPhone.length < 10 ? (
+                    <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1">
+                      <span>⚠️ {10 - customerPhone.length} more digit{10 - customerPhone.length === 1 ? '' : 's'} required</span>
+                    </p>
+                  ) : null}
 
                   {cleanCustomerPhone.length === 10 && (
                     <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2 animate-in fade-in">
@@ -1848,6 +1920,23 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   </div>
                 )}
 
+                {/* Mandatory Mobile Notice if cart has items but mobile is missing/incomplete */}
+                {cartItems.length > 0 && cleanCustomerPhone.length !== 10 && (
+                  <div
+                    onClick={() => {
+                      setPhoneError('Customer mobile number is mandatory (10 digits required).');
+                      phoneInputRef.current?.focus();
+                      phoneInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      triggerHaptic();
+                      playBeep(300, 200);
+                    }}
+                    className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-600 dark:text-red-400 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer hover:bg-red-500/25 active:scale-[0.99] transition-all"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                    <span>Customer Mobile Number is Mandatory</span>
+                  </div>
+                )}
+
                 {/* Complete Bill Button */}
                 <button
                   type="button"
@@ -1856,11 +1945,19 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                   className={`w-full h-12 rounded-xl text-sm font-black uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-[0.98] ${
                     cartItems.length === 0 || isSaving
                       ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-500/25'
+                      : cleanCustomerPhone.length !== 10
+                        ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-2 border-red-500/60 shadow-md'
+                        : 'bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white shadow-pink-500/25'
                   }`}
                 >
                   {isSaving ? (
                     <span>Generating Receipt...</span>
+                  ) : cleanCustomerPhone.length !== 10 ? (
+                    <>
+                      <Smartphone className="w-4 h-4 text-red-400" />
+                      <span>Enter Mobile to Complete • ₹{grandTotal}</span>
+                      <ArrowRight className="w-4 h-4 ml-1 opacity-70" />
+                    </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
@@ -2143,7 +2240,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 }`}>
                   <label className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center justify-between">
                     <span>Customer WhatsApp Phone</span>
-                    <span className="text-[10px] text-emerald-500 font-normal">Optional</span>
+                    <span className="text-[10px] text-emerald-500 font-bold">Mandatory on Bill</span>
                   </label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
@@ -2222,10 +2319,13 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setModalMode('pos')}
-                    className="flex-1 h-11 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs uppercase tracking-wider hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                    onClick={() => {
+                      if (currentBill) handleOpenEditBill(currentBill);
+                    }}
+                    className="flex-1 h-11 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 font-black text-xs uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
                   >
-                    ← Edit / Back to POS
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit Bill</span>
                   </button>
                   <button
                     type="button"
@@ -2381,10 +2481,19 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                       <span className="text-sm font-black font-mono text-slate-900 dark:text-white">
                         ₹{bill.totalAmount}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditBill(bill)}
+                        className="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 text-xs font-bold uppercase cursor-pointer flex items-center gap-1 transition-colors"
+                        title="Edit Bill"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Edit</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -2492,6 +2601,22 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             </div>
           </div>
         )}
+
+        {/* Edit Bill Modal */}
+        <EditBillModal
+          bill={editingBill}
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingBill(null);
+          }}
+          onSave={handleSaveEditedBill}
+          stickPrice={settings.stickPrice || 40}
+          potPrice={settings.potPrice || 50}
+          platePrice={settings.platePrice || 75}
+          availableStickFlavours={inventory.stickFlavours?.map(f => f.name)}
+          availablePotFlavours={inventory.potFlavours?.map(f => f.name)}
+        />
 
       </div>
     </div>
