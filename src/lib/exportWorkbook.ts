@@ -132,6 +132,7 @@ export function exportMultiTabWorkbook(options: ExportDataOptions) {
       'Cash Bag Total (₹)': e.cashBagTotal || 0,
       'PhonePe / UPI (₹)': e.phonePe || 0,
       'Offer / Discount (₹)': e.discount || 0,
+      'Redeemed Points (₹)': e.redeemedPoints || 0,
       'Required Amount (₹)': e.requiredAmount || 0,
       'Actual Amount (₹)': e.actualAmount || 0,
       'Gross Sales Revenue (₹)': grossSales,

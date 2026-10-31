@@ -34,6 +34,7 @@ export function generateWhatsAppClosingText(
   const grossSales = (entry.stickSold * stickPrice) + (entry.potSold * potPrice) + ((entry.plateSold || 0) * platePrice);
   const totalKulfis = (entry.stickSold || 0) + (entry.potSold || 0) + (entry.plateSold || 0);
   const discount = entry.discount || 0;
+  const redeemedPoints = entry.redeemedPoints || 0;
   const cartExpenses = (entry.expenses || 0) + (entry.additionalExpenses || 0);
   const netSales = Math.max(0, (entry.actualAmount || 0) - (entry.cashBagLoaded || 0) + cartExpenses + (entry.bonus || 0));
 
@@ -56,6 +57,7 @@ export function generateWhatsAppClosingText(
     `• *Total Kulfis Sold:* *${totalKulfis} pcs*`,
     `• *Gross Sales:* *₹${grossSales.toLocaleString('en-IN')}*`,
     discount > 0 ? `• *Discount/Offer:* -₹${discount.toLocaleString('en-IN')}` : '',
+    redeemedPoints > 0 ? `• *Redeemed Loyalty Points:* -₹${redeemedPoints.toLocaleString('en-IN')} (${redeemedPoints} pts)` : '',
     ``,
     `💰 *COLLECTIONS & CASH IN HAND:*`,
     `• 📱 PhonePe / UPI: *₹${(entry.phonePe || 0).toLocaleString('en-IN')}*`,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyEntry, Denominations } from '../types';
-import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, getDenomsStorageKey } from '../store';
+import { saveEntry, deleteEntry, useSettings, getEntries, useEntries, useInventory, useSpecialOrders, useDailyDenominations, getDenomsStorageKey, useQuickBills } from '../store';
 import { useFranchise } from '../context/FranchiseContext';
 import { format, subDays, addDays, parseISO, startOfMonth, endOfMonth } from 'date-fns';
 import { isDateInMonth } from '../lib/utils';
@@ -52,6 +52,7 @@ export default function AddEntry({
   const { inventory } = useInventory();
   const { specialOrders } = useSpecialOrders();
   const { dailyDenominationsMap } = useDailyDenominations();
+  const { bills } = useQuickBills();
   const [loading, setLoading] = useState(false);
 
   // If staff, restrict initial date to current month (or tomorrow)
@@ -76,6 +77,14 @@ export default function AddEntry({
   const isDirtyRef = React.useRef(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
+  // Total loyalty points redeemed across all POS customer bills for this specific date
+  const totalRedeemedPointsForDate = useMemo(() => {
+    if (!bills || bills.length === 0) return 0;
+    return bills
+      .filter(b => b.date === date && (!activeFid || activeFid === 'all' || !b.franchiseId || b.franchiseId === activeFid))
+      .reduce((sum, b) => sum + (b.pointsRedeemed || 0), 0);
+  }, [bills, date, activeFid]);
+
   // Date-wise Denominations State
   const [denominations, setDenominations] = useState<Denominations>(DEFAULT_DENOMS);
   const isDenomsDirtyRef = React.useRef(false);
@@ -85,9 +94,9 @@ export default function AddEntry({
   const [formData, setFormData] = useState({
     stickLoaded: '', stickBalance: '',
     potLoaded: '', potBalance: '',
-        plateLoaded: '', plateBalance: '',
+    plateLoaded: '', plateBalance: '',
     cashBagLoaded: '', cashBagTotal: '', phonePe: '',
-    discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
+    discount: '', redeemedPoints: '', additionalExpenses: '', expenseDetails: '', bonus: '',
     notes: ''
   });
 
@@ -111,6 +120,10 @@ export default function AddEntry({
 
       if (lastLoadedDateRef.current !== date && !isDirtyRef.current) {
         lastLoadedDateRef.current = date;
+        const initialRedeemed = existingEntry.redeemedPoints !== undefined && existingEntry.redeemedPoints !== null
+          ? (existingEntry.redeemedPoints === 0 && totalRedeemedPointsForDate > 0 ? String(totalRedeemedPointsForDate) : numToInputStr(existingEntry.redeemedPoints))
+          : (totalRedeemedPointsForDate > 0 ? String(totalRedeemedPointsForDate) : '');
+
         setFormData({
           stickLoaded: numToInputStr(existingEntry.stickLoaded),
           stickBalance: numToInputStr(existingEntry.stickBalance),
@@ -122,6 +135,7 @@ export default function AddEntry({
           cashBagTotal: numToInputStr(existingEntry.cashBagTotal),
           phonePe: numToInputStr(existingEntry.phonePe),
           discount: numToInputStr(existingEntry.discount),
+          redeemedPoints: initialRedeemed,
           additionalExpenses: numToInputStr(existingEntry.additionalExpenses),
           expenseDetails: existingEntry.expenseDetails ?? '',
           bonus: numToInputStr(existingEntry.bonus),
@@ -189,7 +203,9 @@ export default function AddEntry({
             potLoaded: '', potBalance: '',
             plateLoaded: '', plateBalance: '',
             cashBagLoaded: '', cashBagTotal: '', phonePe: '',
-            discount: '', additionalExpenses: '', expenseDetails: '', bonus: '',
+            discount: '', 
+            redeemedPoints: totalRedeemedPointsForDate > 0 ? String(totalRedeemedPointsForDate) : '',
+            additionalExpenses: '', expenseDetails: '', bonus: '',
             notes: ''
           });
 
@@ -216,7 +232,14 @@ export default function AddEntry({
     } else {
       setPrevBalances({ stick: 0, pot: 0 });
     }
-  }, [date, entries, dailyDenominationsMap, activeFid]);
+  }, [date, entries, dailyDenominationsMap, activeFid, totalRedeemedPointsForDate]);
+
+  // Auto-sync redeemed points from POS bills for that date if the field is empty or unedited
+  useEffect(() => {
+    if (totalRedeemedPointsForDate > 0 && !isDirtyRef.current && (formData.redeemedPoints === '' || formData.redeemedPoints === '0')) {
+      setFormData(prev => ({ ...prev, redeemedPoints: String(totalRedeemedPointsForDate) }));
+    }
+  }, [totalRedeemedPointsForDate, formData.redeemedPoints]);
 
   const handleDenominationsChange = (newDenoms: Denominations) => {
     isDenomsDirtyRef.current = true;
@@ -287,6 +310,7 @@ export default function AddEntry({
 
   // Auto calculate finances
   const discount = parseInt(formData.discount) || 0;
+  const redeemedPoints = parseInt(formData.redeemedPoints) || 0;
   const cashBagLoaded = parseInt(formData.cashBagLoaded) || 0;
   
   const platformRent = settings.enablePlatformFee ? (settings.platformFee || 0) : 0;
@@ -294,9 +318,9 @@ export default function AddEntry({
   const additionalExpenses = parseInt(formData.additionalExpenses) || 0;
   const bonus = parseInt(formData.bonus) || 0;
   
-  // Required amount: Sales - Discount + Cash Bag Loaded - Platform Rent - Additional Expenses - Bonus
+  // Required amount: Sales - Discount - Redeemed Points + Cash Bag Loaded - Platform Rent - Additional Expenses - Bonus
   const expectedSales = (stickSold * (settings.stickPrice || 40)) + (potSold * (settings.potPrice || 50)) + (plateSold * (settings.platePrice || 75));
-  const requiredAmount = expectedSales - discount + cashBagLoaded - platformRent - additionalExpenses - bonus;
+  const requiredAmount = expectedSales - discount - redeemedPoints + cashBagLoaded - platformRent - additionalExpenses - bonus;
 
   const actualAmount = (parseInt(formData.cashBagTotal) || 0) + (parseInt(formData.phonePe) || 0);
   const shortage = requiredAmount - actualAmount;
@@ -346,6 +370,7 @@ export default function AddEntry({
         cashBagTotal: parseInt(formData.cashBagTotal) || 0,
         phonePe: parseInt(formData.phonePe) || 0,
         discount,
+        redeemedPoints,
         requiredAmount,
         actualAmount,
         shortage,
@@ -374,7 +399,7 @@ export default function AddEntry({
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [formData, denominations, date, stickSold, potSold, plateSold, discount, requiredAmount, actualAmount, shortage, finalAmount, platformRent, entries, entryId, activeFid]);
+  }, [formData, denominations, date, stickSold, potSold, plateSold, discount, redeemedPoints, requiredAmount, actualAmount, shortage, finalAmount, platformRent, entries, entryId, activeFid]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,6 +429,7 @@ export default function AddEntry({
       cashBagTotal: parseInt(formData.cashBagTotal) || 0,
       phonePe: parseInt(formData.phonePe) || 0,
       discount,
+      redeemedPoints,
       requiredAmount,
       actualAmount,
       shortage,
@@ -689,6 +715,35 @@ export default function AddEntry({
                     <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Bonus</Label>
                     <Input name="bonus" type="text" inputMode="numeric" value={formData.bonus} onChange={handleChange} onFocus={handleFocus} />
                   </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">
+                        Redeemed Points <span className="text-amber-600 dark:text-amber-400 font-black">(1 pt = ₹1)</span>
+                      </Label>
+                      {totalRedeemedPointsForDate > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            isDirtyRef.current = true;
+                            setFormData(prev => ({ ...prev, redeemedPoints: String(totalRedeemedPointsForDate) }));
+                          }}
+                          className="text-[9px] font-black text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          title="Auto-filled from today's POS bills. Click to re-apply."
+                        >
+                          ⚡ Auto: {totalRedeemedPointsForDate}
+                        </button>
+                      )}
+                    </div>
+                    <Input 
+                      name="redeemedPoints" 
+                      type="text" 
+                      inputMode="numeric" 
+                      placeholder="0"
+                      value={formData.redeemedPoints} 
+                      onChange={handleChange} 
+                      onFocus={handleFocus} 
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -700,6 +755,7 @@ export default function AddEntry({
                   cashBagLoaded={cashBagLoaded}
                   expectedSales={expectedSales}
                   discount={discount}
+                  redeemedPoints={redeemedPoints}
                   phonePe={parseInt(formData.phonePe) || 0}
                   platformRent={platformRent}
                   additionalExpenses={additionalExpenses}
@@ -726,7 +782,7 @@ export default function AddEntry({
                  <div className="space-y-2.5">
                    <div className="flex justify-between text-sm items-center">
                      <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Expected Sales</span>
-                     <span className="font-black text-base text-slate-900 dark:text-white">₹{expectedSales - discount}</span>
+                     <span className="font-black text-base text-slate-900 dark:text-white">₹{expectedSales - discount - redeemedPoints}</span>
                    </div>
                    <div className="flex justify-between text-sm items-center">
                      <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-400 uppercase tracking-widest">Actual Sales <span className="text-slate-500 dark:text-slate-500 font-extrabold text-[9px]">(Excl. Cash Bag)</span></span>

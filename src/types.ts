@@ -42,6 +42,7 @@ export interface DailyEntry {
   cashBagTotal: number;
   phonePe: number;
   discount: number;
+  redeemedPoints?: number;
   
   requiredAmount: number;
   actualAmount: number;

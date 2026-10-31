@@ -1618,6 +1618,12 @@ export default function Reports({ role = 'owner', onEdit, onEditExpense }: { rol
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Bonus</p>
                         <p className={`font-black text-sm text-amber-500`}>{formatCurrency(viewEntry.bonus)}</p>
                       </div>
+                      {(viewEntry.redeemedPoints !== undefined && viewEntry.redeemedPoints > 0) && (
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Redeemed Points</p>
+                          <p className="font-black text-sm text-amber-600 dark:text-amber-400">{viewEntry.redeemedPoints} pts (₹{viewEntry.redeemedPoints})</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Final Handover</p>
                         <p className={`font-black text-sm text-emerald-500`}>{formatCurrency(viewEntry.finalAmount)}</p>

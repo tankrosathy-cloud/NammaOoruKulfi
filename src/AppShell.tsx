@@ -414,7 +414,14 @@ function AppShellContent() {
             onOpenQuickBill={() => navigateTab('quickbill')} 
           />
         )}
-        {activeTab === 'quickbill' && <QuickBillModal isOpen={true} onClose={() => navigateTab('add')} isEmbedded={true} />}
+        {activeTab === 'quickbill' && (
+          <QuickBillModal 
+            isOpen={true} 
+            onClose={() => navigateTab('add')} 
+            isEmbedded={true} 
+            role={navRole === 'owner' ? 'owner' : 'staff'} 
+          />
+        )}
         {activeTab === 'add' && <AddEntry role={navRole as any} onSave={() => navigateTab(navRole === 'staff' ? 'quickbill' : 'reports')} onCancel={() => navigateTab(navRole === 'staff' ? 'quickbill' : 'reports')} initialDate={editDate} key={editDate || 'new'} />}
         {activeTab === 'expense' && navRole === 'owner' && <AddExpense onSave={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} onCancel={() => { setEditExpense(undefined); navigateTab(navRole === 'owner' ? 'dashboard' : 'add'); }} initialExpense={editExpense} />}
         {activeTab === 'reports' && <Reports role={navRole as any} onEdit={handleEditEntry} onEditExpense={handleEditExpense} />}
@@ -427,6 +434,7 @@ function AppShellContent() {
         <QuickBillModal
           isOpen={isQuickBillOpen}
           onClose={() => setIsQuickBillOpen(false)}
+          role={navRole === 'owner' ? 'owner' : 'staff'}
         />
       )}
 

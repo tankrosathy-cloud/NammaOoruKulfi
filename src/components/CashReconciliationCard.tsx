@@ -26,6 +26,7 @@ interface CashReconciliationCardProps {
   cashBagLoaded: number;
   expectedSales: number;
   discount: number;
+  redeemedPoints?: number;
   phonePe: number;
   platformRent: number;
   additionalExpenses: number;
@@ -53,6 +54,7 @@ export default function CashReconciliationCard({
   cashBagLoaded,
   expectedSales,
   discount,
+  redeemedPoints = 0,
   phonePe,
   platformRent,
   additionalExpenses,
@@ -77,8 +79,8 @@ export default function CashReconciliationCard({
 
   const denoms = denominations || localDenoms;
 
-  // Calculate Cash Sales collected from customers
-  const grossSales = Math.max(0, expectedSales - discount);
+  // Calculate Cash Sales collected from customers (accounting for discounts and redeemed loyalty points)
+  const grossSales = Math.max(0, expectedSales - discount - (redeemedPoints || 0));
   const expectedCashSales = grossSales - phonePe;
   const totalDeductions = platformRent + additionalExpenses + bonus;
 

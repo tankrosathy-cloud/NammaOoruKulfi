@@ -902,9 +902,13 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
           const updatedCashBagTotal = (existingEntry.cashBagTotal || 0) + cashAdd;
           const updatedActualAmount = updatedCashBagTotal + updatedPhonePe;
           
-          const updatedRequired = (updatedStickSold * stickPrice) + 
+          const updatedDiscount = (existingEntry.discount || 0) + (bill.discount || 0);
+          const updatedRedeemedPoints = (existingEntry.redeemedPoints || 0) + (bill.pointsRedeemed || 0);
+          const updatedRequired = Math.max(0, (updatedStickSold * stickPrice) + 
                                   (updatedPotSold * potPrice) + 
-                                  (updatedPlateSold * platePrice);
+                                  (updatedPlateSold * platePrice) -
+                                  updatedDiscount -
+                                  updatedRedeemedPoints);
 
           const shortage = Math.max(0, updatedRequired - updatedActualAmount);
           const bonus = Math.max(0, updatedActualAmount - updatedRequired);
@@ -916,6 +920,8 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
             plateSold: updatedPlateSold,
             phonePe: updatedPhonePe,
             cashBagTotal: updatedCashBagTotal,
+            discount: updatedDiscount,
+            redeemedPoints: updatedRedeemedPoints,
             actualAmount: updatedActualAmount,
             requiredAmount: updatedRequired,
             shortage,
@@ -924,7 +930,9 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
           }, { merge: true });
         } else {
           const newEntryId = `entry_${bill.date}_${billWithUser.franchiseId || 'default'}`;
-          const initialRequired = (stickQty * stickPrice) + (potQty * potPrice) + (plateQty * platePrice);
+          const initialDiscount = bill.discount || 0;
+          const initialRedeemedPoints = bill.pointsRedeemed || 0;
+          const initialRequired = Math.max(0, (stickQty * stickPrice) + (potQty * potPrice) + (plateQty * platePrice) - initialDiscount - initialRedeemedPoints);
           const initialActual = cashAdd + upiAdd;
           const initialShortage = Math.max(0, initialRequired - initialActual);
           const initialBonus = Math.max(0, initialActual - initialRequired);
@@ -945,7 +953,8 @@ export async function saveQuickBill(bill: QuickBill, autoSyncToEntry: boolean = 
             cashBagLoaded: 0,
             cashBagTotal: cashAdd,
             phonePe: upiAdd,
-            discount: bill.discount || 0,
+            discount: initialDiscount,
+            redeemedPoints: initialRedeemedPoints,
             requiredAmount: initialRequired,
             actualAmount: initialActual,
             shortage: initialShortage,
@@ -1059,8 +1068,10 @@ export async function updateQuickBill(originalBill: QuickBill, updatedBill: Quic
 
           const diffCash = newCash - oldCash;
           const diffUpi = newUpi - oldUpi;
+          const diffDiscount = (updatedBill.discount || 0) - (originalBill.discount || 0);
+          const diffRedeemedPoints = (updatedBill.pointsRedeemed || 0) - (originalBill.pointsRedeemed || 0);
 
-          if (diffStick !== 0 || diffPot !== 0 || diffPlate !== 0 || diffCash !== 0 || diffUpi !== 0) {
+          if (diffStick !== 0 || diffPot !== 0 || diffPlate !== 0 || diffCash !== 0 || diffUpi !== 0 || diffDiscount !== 0 || diffRedeemedPoints !== 0) {
             let currentSettings: Settings = DEFAULT_SETTINGS;
             try {
               const cached = localStorage.getItem(`kulfi_cache_settings_${currentFranchiseId || 'global'}`) || localStorage.getItem('kulfi_cache_settings_global');
@@ -1079,9 +1090,14 @@ export async function updateQuickBill(originalBill: QuickBill, updatedBill: Quic
             const updatedCashBagTotal = Math.max(0, (existingEntry.cashBagTotal || 0) + diffCash);
             const updatedActualAmount = updatedCashBagTotal + updatedPhonePe;
 
-            const updatedRequired = (updatedStickSold * stickPrice) + 
+            const updatedDiscount = Math.max(0, (existingEntry.discount || 0) + diffDiscount);
+            const updatedRedeemedPoints = Math.max(0, (existingEntry.redeemedPoints || 0) + diffRedeemedPoints);
+
+            const updatedRequired = Math.max(0, (updatedStickSold * stickPrice) + 
                                     (updatedPotSold * potPrice) + 
-                                    (updatedPlateSold * platePrice);
+                                    (updatedPlateSold * platePrice) -
+                                    updatedDiscount -
+                                    updatedRedeemedPoints);
 
             const shortage = Math.max(0, updatedRequired - updatedActualAmount);
             const bonus = Math.max(0, updatedActualAmount - updatedRequired);
@@ -1093,6 +1109,8 @@ export async function updateQuickBill(originalBill: QuickBill, updatedBill: Quic
               plateSold: updatedPlateSold,
               phonePe: updatedPhonePe,
               cashBagTotal: updatedCashBagTotal,
+              discount: updatedDiscount,
+              redeemedPoints: updatedRedeemedPoints,
               actualAmount: updatedActualAmount,
               requiredAmount: updatedRequired,
               shortage,
@@ -1115,6 +1133,13 @@ export async function updateQuickBill(originalBill: QuickBill, updatedBill: Quic
 }
 
 export async function deleteQuickBill(id: string): Promise<void> {
+  const user = auth.currentUser;
+  const username = (user?.email || '').split('@')[0].toLowerCase();
+  const isOwner = !user || isUserAdminOrOwner(username);
+  if (!isOwner) {
+    throw new Error("Staff members do not have permission to delete bills.");
+  }
+
   triggerWriteStart();
   try {
     const docRef = doc(db, 'bills', id);
@@ -1138,6 +1163,7 @@ export async function deleteQuickBill(id: string): Promise<void> {
     triggerDataUpdated('bills', id);
   } catch (error) {
     console.error("Error deleting quick bill:", error);
+    throw error;
   }
 }
 

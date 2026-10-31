@@ -45,7 +45,9 @@ import {
   safeSetDoc,
   MASTER_STICK_FLAVOURS,
   MASTER_POT_FLAVOURS,
-  arrangeFlavoursInSequence
+  arrangeFlavoursInSequence,
+  currentUserRole,
+  isUserAdminOrOwner
 } from '../store';
 import { BillItem, QuickBill } from '../types';
 import { auth, db } from '../lib/firebase';
@@ -88,15 +90,27 @@ interface QuickBillModalProps {
   isOpen: boolean;
   onClose: () => void;
   isEmbedded?: boolean;
+  role?: 'owner' | 'staff';
 }
 
-export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBillModalProps) {
+export function QuickBillModal({ isOpen, onClose, isEmbedded = false, role }: QuickBillModalProps) {
   const { settings } = useSettings();
   const { inventory } = useInventory();
   const { bills, saveBill, updateBill, deleteBill, setWhatsAppStatus } = useQuickBills();
   const { franchise, profile } = useFranchise();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  // Permission: strictly restrict bill deletion to Owner/Admin/SuperAdmin accounts only (no delete access for staff)
+  const canDeleteBills = useMemo(() => {
+    if (role === 'staff') return false;
+    if (profile?.role === 'staff') return false;
+    if (currentUserRole === 'staff') return false;
+    if (profile?.role === 'owner' || profile?.role === 'manager' || profile?.role === 'superadmin') {
+      return true;
+    }
+    return isUserAdminOrOwner();
+  }, [role, profile?.role]);
 
   // Navigation modes: 'pos' (bill creation) | 'receipt' (viewing bill) | 'history' (recent bills) | 'whatsapp' (WhatsApp share queue) | 'leaderboard' (loyalty ranking) | 'redeemed' (kulfi redemptions)
   const [modalMode, setModalMode] = useState<'pos' | 'receipt' | 'history' | 'whatsapp' | 'leaderboard' | 'redeemed'>('pos');
@@ -2749,53 +2763,55 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                       >
                         <Share2 className="w-3.5 h-3.5" />
                       </button>
-                      {deleteConfirmId === bill.id ? (
-                        <div className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-500/40 px-2.5 py-1.5 rounded-xl">
-                          <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 whitespace-nowrap">Delete bill?</span>
-                          <button
-                            type="button"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              triggerHaptic();
-                              try {
-                                await deleteBill(bill.id);
-                              } catch (err) {
-                                console.error("Failed to delete bill:", err);
-                              }
-                              setDeleteConfirmId(null);
-                            }}
-                            className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase cursor-pointer"
-                          >
-                            Yes
-                          </button>
+                      {canDeleteBills && (
+                        deleteConfirmId === bill.id ? (
+                          <div className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-500/40 px-2.5 py-1.5 rounded-xl">
+                            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-300 whitespace-nowrap">Delete bill?</span>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                triggerHaptic();
+                                try {
+                                  await deleteBill(bill.id);
+                                } catch (err) {
+                                  console.error("Failed to delete bill:", err);
+                                }
+                                setDeleteConfirmId(null);
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase cursor-pointer"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setDeleteConfirmId(null);
+                              }}
+                              className="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-[10px] font-bold uppercase cursor-pointer"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              setDeleteConfirmId(null);
+                              triggerHaptic();
+                              setDeleteConfirmId(bill.id);
                             }}
-                            className="px-2 py-0.5 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 text-[10px] font-bold uppercase cursor-pointer"
+                            style={{ touchAction: 'manipulation' }}
+                            className="p-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 cursor-pointer active:scale-95 transition-all shadow-sm"
+                            title="Delete Bill"
                           >
-                            No
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            triggerHaptic();
-                            setDeleteConfirmId(bill.id);
-                          }}
-                          style={{ touchAction: 'manipulation' }}
-                          className="p-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 cursor-pointer active:scale-95 transition-all shadow-sm"
-                          title="Delete Bill"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        )
                       )}
                     </div>
                   </div>
