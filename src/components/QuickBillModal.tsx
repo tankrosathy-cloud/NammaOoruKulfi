@@ -32,7 +32,9 @@ import {
   History,
   AlertCircle,
   Edit2,
-  MessageCircle
+  MessageCircle,
+  Trophy,
+  Gift
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -51,6 +53,8 @@ import { doc } from 'firebase/firestore';
 import { useTheme } from '../context/ThemeContext';
 import { useFranchise } from '../context/FranchiseContext';
 import { EditBillModal } from './EditBillModal';
+import { CustomerLeaderboardTab } from './CustomerLeaderboardTab';
+import { RedeemedHistoryTab } from './RedeemedHistoryTab';
 
 // Shared singletons for performance & zero memory leak
 const qrCodeCache = new Map<string, string>();
@@ -94,8 +98,8 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // Navigation modes: 'pos' (bill creation) | 'receipt' (viewing bill) | 'history' (recent bills) | 'whatsapp' (WhatsApp share queue)
-  const [modalMode, setModalMode] = useState<'pos' | 'receipt' | 'history' | 'whatsapp'>('pos');
+  // Navigation modes: 'pos' (bill creation) | 'receipt' (viewing bill) | 'history' (recent bills) | 'whatsapp' (WhatsApp share queue) | 'leaderboard' (loyalty ranking) | 'redeemed' (kulfi redemptions)
+  const [modalMode, setModalMode] = useState<'pos' | 'receipt' | 'history' | 'whatsapp' | 'leaderboard' | 'redeemed'>('pos');
   // Mobile sub-tab in POS mode: 'menu' (item catalog) | 'cart' (order review & pay)
   const [mobilePosTab, setMobilePosTab] = useState<'menu' | 'cart'>('menu');
   
@@ -177,23 +181,61 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
     }, 0);
   }, [filteredBills]);
 
+  // Yesterday date calculation for quick filters
+  const yesterdayDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, []);
+  const yesterdayStr = useMemo(() => format(yesterdayDate, 'yyyy-MM-dd'), [yesterdayDate]);
+
   // WhatsApp Queue State & Memos
+  const [whatsappDateScope, setWhatsappDateScope] = useState<'today' | 'yesterday' | 'all' | 'custom'>('today');
+  const [whatsappCustomDate, setWhatsappCustomDate] = useState<string>(todayStr);
   const [whatsappFilterStatus, setWhatsappFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
   const [whatsappSearch, setWhatsappSearch] = useState<string>('');
   const [justSharedId, setJustSharedId] = useState<string | null>(null);
 
-  // Counts for WhatsApp tab
+  // WhatsApp bills based on date scope
+  const whatsappScopeBills = useMemo(() => {
+    if (whatsappDateScope === 'today') {
+      return bills.filter(b => b.date === todayStr);
+    }
+    if (whatsappDateScope === 'yesterday') {
+      return bills.filter(b => b.date === yesterdayStr);
+    }
+    if (whatsappDateScope === 'custom') {
+      return bills.filter(b => b.date === whatsappCustomDate);
+    }
+    // 'all'
+    return bills;
+  }, [bills, whatsappDateScope, todayStr, yesterdayStr, whatsappCustomDate]);
+
+  // Counts for quick date buttons
+  const todayWhatsAppBills = useMemo(() => bills.filter(b => b.date === todayStr), [bills, todayStr]);
+  const yesterdayWhatsAppBills = useMemo(() => bills.filter(b => b.date === yesterdayStr), [bills, yesterdayStr]);
+
+  const todayPendingCount = useMemo(() => todayWhatsAppBills.filter(b => !b.whatsappShared).length, [todayWhatsAppBills]);
+  const yesterdayPendingCount = useMemo(() => yesterdayWhatsAppBills.filter(b => !b.whatsappShared).length, [yesterdayWhatsAppBills]);
+  const allPendingCount = useMemo(() => bills.filter(b => !b.whatsappShared).length, [bills]);
+
+  // Active counts for current WhatsApp tab view
   const pendingWhatsAppCount = useMemo(() => {
-    return filteredBills.filter(b => !b.whatsappShared).length;
-  }, [filteredBills]);
+    return whatsappScopeBills.filter(b => !b.whatsappShared).length;
+  }, [whatsappScopeBills]);
 
   const completedWhatsAppCount = useMemo(() => {
-    return filteredBills.filter(b => !!b.whatsappShared).length;
-  }, [filteredBills]);
+    return whatsappScopeBills.filter(b => !!b.whatsappShared).length;
+  }, [whatsappScopeBills]);
+
+  // Total redeemed count for tab badge
+  const redeemedBillsCount = useMemo(() => {
+    return bills.filter(b => (b.pointsRedeemed || 0) > 0).length;
+  }, [bills]);
 
   // WhatsApp queue sorted list: pending at the top, completed at bottom
   const whatsappBills = useMemo(() => {
-    let list = filteredBills;
+    let list = whatsappScopeBills;
     if (whatsappFilterStatus === 'pending') {
       list = list.filter(b => !b.whatsappShared);
     } else if (whatsappFilterStatus === 'completed') {
@@ -223,7 +265,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
         return (b.whatsappSharedAt || b.createdAt || '').localeCompare(a.whatsappSharedAt || a.createdAt || '');
       }
     });
-  }, [filteredBills, whatsappFilterStatus, whatsappSearch]);
+  }, [whatsappScopeBills, whatsappFilterStatus, whatsappSearch]);
 
   // Audio beep on item tap / completion
   const playBeep = (freq = 600, duration = 80) => {
@@ -1032,6 +1074,30 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 <MessageCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>WhatsApp ({pendingWhatsAppCount})</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setModalMode('leaderboard')}
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 ${
+                  modalMode === 'leaderboard' 
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm' 
+                    : 'text-amber-500 dark:text-amber-400 hover:text-amber-400 dark:hover:text-amber-300'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 shrink-0" />
+                <span>Leaderboard</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalMode('redeemed')}
+                className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer shrink-0 whitespace-nowrap flex items-center gap-1.5 ${
+                  modalMode === 'redeemed' 
+                    ? 'bg-purple-600 text-white font-black shadow-sm' 
+                    : 'text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300'
+                }`}
+              >
+                <Gift className="w-3.5 h-3.5 shrink-0" />
+                <span>Redeemed ({redeemedBillsCount})</span>
+              </button>
             </div>
 
             {/* Sound toggle */}
@@ -1057,11 +1123,11 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
         </div>
 
         {/* Mobile View Switcher - Non-overlapping, clean scrollable pills */}
-        <div className="md:hidden flex items-center border-b border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 p-1.5 gap-1.5 shrink-0 z-20 overflow-x-auto no-scrollbar touch-pan-x">
+        <div className="md:hidden flex items-center border-b border-slate-200 dark:border-slate-800 bg-slate-100/95 dark:bg-slate-900/95 p-1.5 gap-1.5 shrink-0 z-20 overflow-x-auto no-scrollbar touch-pan-x flex-nowrap">
           <button
             type="button"
             onClick={() => { setModalMode('pos'); setMobilePosTab('menu'); }}
-            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'pos' && mobilePosTab === 'menu'
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
@@ -1073,7 +1139,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
           <button
             type="button"
             onClick={() => { setModalMode('pos'); setMobilePosTab('cart'); }}
-            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'pos' && mobilePosTab === 'cart'
                 ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-md'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
@@ -1086,7 +1152,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
             <button
               type="button"
               onClick={() => setModalMode('receipt')}
-              className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
                 modalMode === 'receipt' 
                   ? 'bg-emerald-600 text-white shadow-md' 
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
@@ -1099,7 +1165,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
           <button
             type="button"
             onClick={() => setModalMode('history')}
-            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'history' 
                 ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-600/20' 
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60'
@@ -1111,7 +1177,7 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
           <button
             type="button"
             onClick={() => setModalMode('whatsapp')}
-            className={`flex-1 shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
               modalMode === 'whatsapp' 
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' 
                 : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30'
@@ -1119,6 +1185,30 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
           >
             <MessageCircle className="w-3.5 h-3.5 shrink-0" />
             <span>WhatsApp ({pendingWhatsAppCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalMode('leaderboard')}
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              modalMode === 'leaderboard' 
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black shadow-md shadow-amber-500/20' 
+                : 'text-amber-500 hover:text-amber-400 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5 shrink-0" />
+            <span>Leaderboard</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalMode('redeemed')}
+            className={`shrink-0 min-w-max py-1.5 px-2.5 text-center text-[10px] xs:text-[11px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              modalMode === 'redeemed' 
+                ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-black shadow-md shadow-purple-600/20' 
+                : 'text-purple-400 hover:text-purple-300 bg-purple-500/10 dark:bg-purple-950/30 border border-purple-500/30'
+            }`}
+          >
+            <Gift className="w-3.5 h-3.5 shrink-0" />
+            <span>Redeemed ({redeemedBillsCount})</span>
           </button>
         </div>
 
@@ -2749,26 +2839,73 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
                 </div>
               </div>
 
-              {/* Date Controls */}
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <Calendar className="w-4 h-4 text-emerald-500 shrink-0" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => setSelectedDate(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl border text-xs font-bold font-mono bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
-                />
+              {/* Date Controls with Today & Yesterday Quick Buttons */}
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setSelectedDate(todayStr)}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer ${
-                    selectedDate === todayStr 
-                      ? 'bg-emerald-600 text-white shadow-sm' 
+                  onClick={() => {
+                    setWhatsappDateScope('today');
+                    setSelectedDate(todayStr);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+                    whatsappDateScope === 'today'
+                      ? 'bg-emerald-600 text-white shadow-sm'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-white'
                   }`}
                 >
-                  Today
+                  <span>⚡ Today</span>
+                  {todayPendingCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black">
+                      {todayPendingCount}
+                    </span>
+                  )}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWhatsappDateScope('yesterday');
+                    setSelectedDate(yesterdayStr);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+                    whatsappDateScope === 'yesterday'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>📅 Yesterday</span>
+                  {yesterdayPendingCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black">
+                      {yesterdayPendingCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setWhatsappDateScope('all')}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-black uppercase transition-all cursor-pointer flex items-center gap-1.5 ${
+                    whatsappDateScope === 'all'
+                      ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span>All Dates</span>
+                </button>
+
+                <div className="flex items-center gap-1 pl-0.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <input
+                    type="date"
+                    value={whatsappDateScope === 'custom' ? whatsappCustomDate : selectedDate}
+                    onChange={e => {
+                      setWhatsappCustomDate(e.target.value);
+                      setSelectedDate(e.target.value);
+                      setWhatsappDateScope('custom');
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl border text-xs font-bold font-mono bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -2988,6 +3125,42 @@ export function QuickBillModal({ isOpen, onClose, isEmbedded = false }: QuickBil
 
             <div className="h-12 md:hidden shrink-0" />
           </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODE 5: CUSTOMER LOYALTY LEADERBOARD */}
+        {/* ========================================================================= */}
+        {modalMode === 'leaderboard' && (
+          <CustomerLeaderboardTab
+            bills={bills}
+            stickPrice={settings.stickPrice || 40}
+            potPrice={settings.potPrice || 50}
+            isDark={isDark}
+            storeName={settings.upiName || franchise?.name || 'Namma Ooru Kulfi'}
+            onViewBill={(bill) => {
+              setCurrentBill(bill);
+              setModalMode('receipt');
+            }}
+            customerChronologicalBalanceMap={customerChronologicalBalanceMap}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODE 6: KULFI REDEEMED CUSTOMER HISTORY */}
+        {/* ========================================================================= */}
+        {modalMode === 'redeemed' && (
+          <RedeemedHistoryTab
+            bills={bills}
+            stickPrice={settings.stickPrice || 40}
+            potPrice={settings.potPrice || 50}
+            isDark={isDark}
+            onViewBill={(bill) => {
+              setCurrentBill(bill);
+              setModalMode('receipt');
+            }}
+            onShareWhatsApp={handleShareWhatsApp}
+            customerChronologicalBalanceMap={customerChronologicalBalanceMap}
+          />
         )}
 
         {/* Full-Size QR Lightbox Modal */}
